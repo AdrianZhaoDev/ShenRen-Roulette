@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>神人抽象大乱斗 v1.0 - 电子斗蛐蛐短视频专版</title>
+  <title>神人对决</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -15,7 +15,7 @@
       <ul class="hotkey-list">
         <li><kbd>P</kbd> 切换纯净录屏模式（隐藏周边）</li>
         <li><kbd>Space</kbd> 战斗暂停 / 帧冻结</li>
-        <li><kbd>1~5</kbd> 键盘秒放底部 1~5 号主动技</li>
+        <li><kbd>D</kbd> 【技术流】最后一瞬闪避究极技</li>
         <li><kbd>Q</kbd> 【剧本】我方锁1滴血+怒气全满</li>
         <li><kbd>W</kbd> 【剧本】敌方锁1滴血（准备斩杀）</li>
         <li><kbd>E</kbd> 【剧本】双方瞬间贴脸大乱斗</li>
@@ -32,6 +32,15 @@
 
     <!-- 9:16 手机竖屏主舞台 -->
     <div id="phone-viewport">
+      <!-- 微信小游戏顶部状态与胶囊栏（满足微信备案截图规范：截图内小游戏名为当前小游戏名字《神人对决》） -->
+      <div id="wx-minigame-bar" class="wx-minigame-bar">
+        <span class="wx-game-title">神人对决</span>
+        <div class="wx-capsule">
+          <span class="wx-dots">•••</span>
+          <span class="wx-divider"></span>
+          <span class="wx-circle">◎</span>
+        </div>
+      </div>
       <!-- 顶部全局状态条（大厅与抽卡可见，战斗中自动切换为对战血条） -->
       <header id="top-bar">
         <div class="player-level">
@@ -54,7 +63,7 @@
       <section id="screen-lobby" class="game-screen active">
         <div class="lobby-hero-banner">
           <div class="glitch-tag">全随机肉鸽 × 抽象梗电子斗蛐蛐</div>
-          <h1 class="game-logo">神人抽象大乱斗</h1>
+          <h1 class="game-logo">神人对决</h1>
           <div class="winrate-badge">⚖️ 动态天平已开启：纯自动胜率 45~55% | 手操抓时机 70%+</div>
         </div>
 
@@ -174,7 +183,8 @@
 
           <div class="vs-timer-box">
             <div class="vs-badge">VS</div>
-            <div id="hud-timer" class="match-timer">25</div>
+            <div id="hud-timer" class="match-timer">300</div>
+            <div id="hud-phase" class="phase-label">前期 · 试探构筑</div>
           </div>
 
           <div class="fighter-hud right-fighter">
@@ -191,15 +201,24 @@
           </div>
         </div>
 
-        <!-- 阶段A + B 覆盖层：3秒盲盒抽角色 & 5秒词条 5选3 -->
+        <!-- 阶段A + B 覆盖层：3秒盲盒抽人 & 5秒词条 5选3 -->
         <div id="draft-overlay" class="draft-overlay hidden">
           <!-- 动态切换：抽角色盲盒 / 词条5选3 -->
         </div>
 
-        <!-- 关键时机 QTE 弹反 / 狂点提示按钮（出现时抓时机点按大幅提胜率） -->
-        <button id="qte-counter-btn" class="qte-counter-btn hidden">
-          ⚡ 抓时机！点我【极限弹反/哈气】！
-        </button>
+        <!-- 格斗游戏式究极技全屏 Cut-in：前摇阶段冻结战场，最后0.75秒开放闪避 -->
+        <div id="ultimate-cutin-overlay" class="ultimate-cutin-overlay hidden">
+          <div class="cutin-speed-lines"></div>
+          <div class="cutin-panel">
+            <div id="cutin-caster" class="cutin-caster">🚛 大运百吨王发动究极技能</div>
+            <div id="cutin-title" class="cutin-title">【究极奥义】异世界转生百吨专列!!</div>
+            <div id="cutin-subtitle" class="cutin-subtitle">高能前摇锁定！抓最后一瞬闪避可以大幅减伤！</div>
+            <div class="cutin-warning">落地倒计时 <strong id="cutin-timer">1.55s</strong></div>
+          </div>
+          <button id="ultimate-dodge-btn" class="ultimate-dodge-btn">🥋 最后一瞬！闪避究极技</button>
+        </div>
+
+        <button id="ultimate-dodge-fallback" class="ultimate-dodge-fallback hidden">⚡ 极限闪避！</button>
 
         <!-- 底部操作栏：自动开关 + 最多 5 个主动技能按钮（1普通主动 + 0~1主动究极 + 0~3主动词条） -->
         <div id="battle-hud-bottom" class="battle-hud-bottom">

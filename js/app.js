@@ -399,11 +399,13 @@ class AppController {
     }, 250);
   }
 
-  // 阶段 B：词条 5 选 3（含主动与被动，按抽卡升级的权重刷出，5秒不选自动补齐3个直接开战！）
+  // 阶段 B：词条 5 选 3（每局先随机一个流派权重，帮助稳定成型）
   startPerk5Pick3Flow(chosenHeroId) {
     clearInterval(this.draftTimerId);
     const draftEl = document.getElementById("draft-overlay");
-    const fivePerks = this.store.rollFivePerksForDraft();
+    const draftRoll = this.store.rollFivePerksForDraft(this.store.state.preferredArchetype === "all" ? null : this.store.state.preferredArchetype);
+    const focusArch = draftRoll.focusArch;
+    const fivePerks = draftRoll.perks;
     const selectedIds = new Set();
     let timeLeft = 4.5;
 
@@ -430,6 +432,7 @@ class AppController {
                 <div style="font-size:13px;font-weight:900">
                   <span class="rarity-tag ${pk.rarity}">${pk.rarity}</span>
                   ${pk.name}
+                  <span style="font-size:10px;color:${window.MEME_DATA.archetypes[pk.archetype]?.color || "#ffe600"}">[${window.MEME_DATA.archetypes[pk.archetype]?.name || "通用"}]</span>
                   <span style="font-size:10px;color:#ffe600">[${pk.type === "active" ? "⚡主动技" : "🛡️被动"}]</span>
                   <span style="font-size:10px;color:#9499b3">权重Lv.${lv}</span>
                 </div>
@@ -445,9 +448,9 @@ class AppController {
 
       draftEl.innerHTML = `
         <div class="draft-header">
-          <span class="draft-step-pill">STEP 2/2 · 随机词条 5 选 3 (${selectedIds.size}/3)</span>
+          <span class="draft-step-pill">STEP 2/2 · ${window.MEME_DATA.archetypes[focusArch].name} UP · 词条5选3 (${selectedIds.size}/3)</span>
           <h2>⚡ 选择 3 个神人词条加持本局！</h2>
-          <div style="font-size:11px;color:#9499b3">不操作将在倒计时结束后自动随机选满 3 个开打！</div>
+          <div style="font-size:11px;color:#9499b3">本局流派权重已锁定：${window.MEME_DATA.archetypes[focusArch].desc}</div>
           <div class="draft-countdown">${timeLeft.toFixed(1)}s</div>
         </div>
         <div class="perk-draft-list">${listHtml}</div>
@@ -535,6 +538,8 @@ class AppController {
 
     document.getElementById("btn-quick-rematch").addEventListener("click", () => this.startMatchDraftFlow());
     document.getElementById("qte-counter-btn").addEventListener("click", () => this.engine.triggerManualQTE());
+    document.getElementById("ultimate-dodge-btn").addEventListener("click", () => this.engine.triggerUltimateDodge());
+    document.getElementById("ultimate-dodge-fallback").addEventListener("click", () => this.engine.triggerUltimateDodge());
 
     // 战后结算跳转
     document.getElementById("btn-res-gacha").addEventListener("click", () => {
@@ -546,11 +551,11 @@ class AppController {
       this.startMatchDraftFlow();
     });
 
-    // 后台200局平衡模拟器
+    // 后台300秒长局平衡模拟器
     const runSim = () => {
       const report = this.engine.runHeadlessSimulation(200);
       const txtEl = document.getElementById("sim-result-text");
-      txtEl.innerHTML = `✅ 已完成 <strong>${report.matches}</strong> 局全随机纯自动对战：<br/>我方胜率：<strong style="color:#00ff88;font-size:14px">${report.winRate}%</strong> (${report.p1Wins}胜 / ${report.matches - report.p1Wins}负) — 严格处于 40%~60% 区间！`;
+      txtEl.innerHTML = `✅ 已完成 <strong>${report.matches}</strong> 局全随机纯自动长局对战：<br/>我方胜率：<strong style="color:#00ff88;font-size:14px">${report.winRate}%</strong> (${report.p1Wins}胜 / ${report.matches - report.p1Wins}负) — 目标区间 40%~60%！`;
     };
     document.getElementById("btn-run-sim").addEventListener("click", runSim);
 
@@ -562,6 +567,9 @@ class AppController {
       } else if (e.code === "Space" && this.engine.running) {
         e.preventDefault();
         this.engine.paused = !this.engine.paused;
+      } else if (k === "d" && this.engine.running) {
+        // 手动技术流：D 键等同于最后一瞬究极闪避
+        this.engine.triggerUltimateDodge();
       } else if (["1", "2", "3", "4", "5"].includes(k) && this.engine.running) {
         const idx = Number(k) - 1;
         this.engine.castActiveSlot(this.engine.p1, this.engine.p2, idx, true, false);
@@ -617,4 +625,64 @@ function cxOrMid(engine) {
 
 window.addEventListener("DOMContentLoaded", () => {
   window.appUI = new AppController();
+  const params = new URLSearchParams(window.location.search);
+  const shot = params.get("shot");
+  if (shot) {
+    document.body.classList.add("pure-record-mode");
+    if (shot === "gacha") {
+      window.appUI.switchScreen("screen-gacha");
+      window.appUI.executeGachaPull(10);
+    } else if (shot === "shop") {
+      window.appUI.switchScreen("screen-shop");
+    } else if (shot === "codex") {
+      window.appUI.switchScreen("screen-codex");
+    } else if (shot === "draft1") {
+      const activePerks = window.MEME_DATA.perks.filter((p) => p.type === "active").slice(0, 3);
+      window.appUI.engine.startMatch("dayun", activePerks);
+      window.appUI.engine.paused = true;
+      window.appUI.startMatchDraftFlow();
+      clearInterval(window.appUI.draftTimerId);
+    } else if (shot === "draft2") {
+      const activePerks = window.MEME_DATA.perks.filter((p) => p.type === "active").slice(0, 3);
+      window.appUI.engine.startMatch("dayun", activePerks);
+      window.appUI.engine.paused = true;
+      window.appUI.switchScreen("screen-battle");
+      document.getElementById("draft-overlay").classList.remove("hidden");
+      window.appUI.startPerk5Pick3Flow("dayun");
+      clearInterval(window.appUI.draftTimerId);
+    } else if (shot === "battle") {
+      window.appUI.switchScreen("screen-battle");
+      const activePerks = window.MEME_DATA.perks.filter((p) => p.type === "active").slice(0, 3);
+      window.appUI.engine.startMatch("dayun", activePerks);
+      window.appUI.engine.castActiveSlot(window.appUI.engine.p1, window.appUI.engine.p2, 0, true, false);
+      window.appUI.engine.castActiveSlot(window.appUI.engine.p1, window.appUI.engine.p2, 1, true, false);
+      document.getElementById("qte-counter-btn").classList.remove("hidden");
+      window.appUI.engine.update(0.15, false);
+      window.appUI.engine.draw();
+    } else if (shot === "sys1") {
+      // 系统1专用：保底商城购买升级后的高积分状态
+      window.appUI.store.state.level = 8;
+      window.appUI.store.state.pityCoins = 680;
+      window.appUI.store.state.tickets = 95;
+      window.appUI.store.state.unlockedHeroes["laoda"] = true;
+      window.appUI.refreshTopBar();
+      window.appUI.switchScreen("screen-shop");
+      document.getElementById("shop-list").scrollTop = 180;
+    } else if (shot === "sys2") {
+      // 系统2专用：全明星混池完成20连抽并触发重复卡智能升级面板
+      window.appUI.store.state.level = 12;
+      window.appUI.store.state.tickets = 160;
+      window.appUI.switchScreen("screen-gacha");
+      window.appUI.executeGachaPull(10);
+      window.appUI.executeGachaPull(10);
+    } else if (shot === "sys3") {
+      // 系统3专用：战后胜利结算与升级奖励系统界面
+      window.appUI.switchScreen("screen-battle");
+      const activePerks = window.MEME_DATA.perks.filter((p) => p.type === "active").slice(0, 3);
+      window.appUI.engine.startMatch("hajimi", activePerks);
+      window.appUI.engine.p2.hp = 0;
+      window.appUI.engine.manualPerfectCount = 3;
+      window.appUI.engine.finishMatch();
+    }
+  }
 });
