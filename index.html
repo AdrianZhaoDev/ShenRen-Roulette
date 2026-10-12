@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>神人抽象大乱斗 v1.0 - 电子斗蛐蛐短视频专版</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 电脑端背景氛围与录屏辅助栏 -->
+  <div id="studio-backdrop">
+    <div class="studio-sidebar left-bar">
+      <div class="studio-badge">REC STUDIO // 9:16 竖屏录播台</div>
+      <h2>🎬 导演快捷键（录屏框外）</h2>
+      <ul class="hotkey-list">
+        <li><kbd>P</kbd> 切换纯净录屏模式（隐藏周边）</li>
+        <li><kbd>Space</kbd> 战斗暂停 / 帧冻结</li>
+        <li><kbd>1~5</kbd> 键盘秒放底部 1~5 号主动技</li>
+        <li><kbd>Q</kbd> 【剧本】我方锁1滴血+怒气全满</li>
+        <li><kbd>W</kbd> 【剧本】敌方锁1滴血（准备斩杀）</li>
+        <li><kbd>E</kbd> 【剧本】双方瞬间贴脸大乱斗</li>
+        <li><kbd>R</kbd> 【剧本】天降横祸（全屏大运冲撞）</li>
+        <li><kbd>T</kbd> 【调试】直接送 50 抽 + 500 保底币</li>
+        <li><kbd>B</kbd> 【验证】后台秒跑 200 局胜率校准</li>
+      </ul>
+      <div id="sim-report-box" class="sim-report">
+        <div class="sim-title">📊 自动对战平衡监测 (目标 40%~60%)</div>
+        <div id="sim-result-text">点击 <kbd>B</kbd> 或下方按钮秒跑 200 局自动战斗检测胜率波动</div>
+        <button id="btn-run-sim" class="studio-btn">⚡ 秒跑 200 局自动胜率测试</button>
+      </div>
+    </div>
+
+    <!-- 9:16 手机竖屏主舞台 -->
+    <div id="phone-viewport">
+      <!-- 顶部全局状态条（大厅与抽卡可见，战斗中自动切换为对战血条） -->
+      <header id="top-bar">
+        <div class="player-level">
+          <span class="lv-badge" id="ui-level">Lv.1</span>
+          <div class="exp-bar"><div class="exp-fill" id="ui-exp-fill" style="width: 20%"></div></div>
+        </div>
+        <div class="currency-group">
+          <div class="currency-pill ticket" title="抽卡券（每局升级狂送）">
+            <span>🎟️ 抽卡券</span>
+            <strong id="ui-tickets">30</strong>
+          </div>
+          <div class="currency-pill pity" title="保底兑换币（重复卡转化）">
+            <span>💎 保底币</span>
+            <strong id="ui-pity">100</strong>
+          </div>
+        </div>
+      </header>
+
+      <!-- 视图 1：主大厅 / 快速开局与角色配装 -->
+      <section id="screen-lobby" class="game-screen active">
+        <div class="lobby-hero-banner">
+          <div class="glitch-tag">全随机肉鸽 × 抽象梗电子斗蛐蛐</div>
+          <h1 class="game-logo">神人抽象大乱斗</h1>
+          <div class="winrate-badge">⚖️ 动态天平已开启：纯自动胜率 45~55% | 手操抓时机 70%+</div>
+        </div>
+
+        <!-- 当前选中预览角色与配装 (2固定被动 + 1自选普通主动 + 1自选究极技) -->
+        <div class="roster-section">
+          <div class="section-header">
+            <span>🎭 已解锁神人池（开局随机抽，点选可预览/配装）</span>
+            <span id="ui-unlocked-count" class="count-tag">2/4</span>
+          </div>
+          <div id="hero-tabs" class="hero-tabs"></div>
+
+          <div id="hero-loadout-card" class="loadout-card">
+            <!-- 动态渲染选中角色头像、2固定核心被动、1自选主动槽、1自选究极槽 -->
+          </div>
+        </div>
+
+        <!-- 主操作大按钮区 -->
+        <div class="lobby-cta-area">
+          <button id="btn-start-match" class="btn-mega-start">
+            <span class="btn-main-txt">⚡ 立即随机匹配开打</span>
+            <span class="btn-sub-txt">3秒盲盒抽人 + 5秒词条5选3 · 狂暴25秒互秒</span>
+          </button>
+
+          <div class="lobby-sub-nav">
+            <button id="btn-open-gacha" class="btn-nav gacha-nav">
+              <span class="nav-badge" id="gacha-red-dot">狂送十连!</span>
+              🎰 全明星大混池
+            </button>
+            <button id="btn-open-shop" class="btn-nav shop-nav">
+              💎 保底兑换店
+            </button>
+            <button id="btn-open-codex" class="btn-nav codex-nav">
+              📜 词条权重池
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 视图 2：全明星大混池 & 重复卡【升级/转化】决策弹窗 -->
+      <section id="screen-gacha" class="game-screen">
+        <div class="subscreen-top">
+          <button class="btn-back" data-target="screen-lobby">⬅ 返回大厅</button>
+          <h2>🎰 全明星抽象大混池</h2>
+        </div>
+
+        <div class="gacha-banner-box">
+          <div class="gacha-title-burst">UR 究极神技 / 逆天彩色词条 UP!</div>
+          <div class="prob-pills">
+            <span class="prob-ur">🌈 UR 究极技/彩词条 3%</span>
+            <span class="prob-ssr">🔥 SSR 新角色/专属技 25%</span>
+            <span class="prob-sr">⚡ SR/R 通用词条 72%</span>
+          </div>
+          <div class="gacha-rule-note">
+            💡 <strong>重复卡智能分流</strong>：高阶词条推荐【升级】（大幅提升局内5选3刷出率，不破坏平衡）；角色技能【升级】伤害&特效翻倍；均可一键【转化保底币】！
+          </div>
+        </div>
+
+        <div id="gacha-stage" class="gacha-stage">
+          <div class="gacha-idle-hint">点击下方按钮开抽！每局打完狂送 20~30 抽！</div>
+        </div>
+
+        <!-- 重复卡批量处理结算栏 -->
+        <div id="gacha-dupe-bar" class="gacha-dupe-bar hidden">
+          <div class="dupe-summary" id="dupe-summary-text">本轮含重复卡，已按稀有度智能勾选【推荐升级 / 转化保底币】</div>
+          <div class="dupe-actions">
+            <button id="btn-all-upgrade" class="btn-mini">全部升级</button>
+            <button id="btn-all-convert" class="btn-mini">全部转币</button>
+            <button id="btn-confirm-gacha" class="btn-confirm-dupes">✅ 确认执行所选方案</button>
+          </div>
+        </div>
+
+        <div class="gacha-bottom-cta">
+          <button id="btn-pull-1" class="btn-pull single">单抽一发 (1🎟️)</button>
+          <button id="btn-pull-10" class="btn-pull ten">🔥 狂暴十连抽 (10🎟️)</button>
+        </div>
+      </section>
+
+      <!-- 视图 3：保底币兑换商店 -->
+      <section id="screen-shop" class="game-screen">
+        <div class="subscreen-top">
+          <button class="btn-back" data-target="screen-lobby">⬅ 返回大厅</button>
+          <h2>💎 保底强娶商店</h2>
+        </div>
+        <p class="subscreen-desc">重复卡转化的【保底币】可直接强娶未解锁角色、0.5% UR 究极技能与逆天彩色词条！</p>
+        <div id="shop-list" class="shop-list"></div>
+      </section>
+
+      <!-- 视图 4：通用词条池与刷出权重预览 -->
+      <section id="screen-codex" class="game-screen">
+        <div class="subscreen-top">
+          <button class="btn-back" data-target="screen-lobby">⬅ 返回大厅</button>
+          <h2>📜 词条池与5选3刷出权重</h2>
+        </div>
+        <p class="subscreen-desc">升级通用词条只提高每局开打前【5选3】的刷出概率权重，确保神仙打架同时维持 40~60% 动态胜率！</p>
+        <div id="codex-list" class="codex-list"></div>
+      </section>
+
+      <!-- 视图 5：局内流程（阶段A: 3秒盲盒抽人 -> 阶段B: 5秒词条5选3 -> 阶段C: 1v1狂暴弹球战斗） -->
+      <section id="screen-battle" class="game-screen">
+        <!-- 战斗主 Canvas -->
+        <canvas id="battle-canvas" width="540" height="960"></canvas>
+
+        <!-- 顶部对战 HUD -->
+        <div id="battle-hud-top" class="battle-hud-top">
+          <div class="fighter-hud left-fighter">
+            <div class="hud-name-row">
+              <span class="hud-tag you">我方</span>
+              <strong id="hud-p1-name">大运百吨王</strong>
+            </div>
+            <div class="hp-bar-outer">
+              <div id="hud-p1-hp-delay" class="hp-bar-delay" style="width:100%"></div>
+              <div id="hud-p1-hp" class="hp-bar-fill p1" style="width:100%"></div>
+              <span id="hud-p1-hp-txt" class="hp-txt">1000/1000</span>
+            </div>
+            <div id="hud-p1-passives" class="hud-mini-tags"></div>
+          </div>
+
+          <div class="vs-timer-box">
+            <div class="vs-badge">VS</div>
+            <div id="hud-timer" class="match-timer">25</div>
+          </div>
+
+          <div class="fighter-hud right-fighter">
+            <div class="hud-name-row">
+              <strong id="hud-p2-name">哈基米耄耋</strong>
+              <span class="hud-tag enemy">对手</span>
+            </div>
+            <div class="hp-bar-outer">
+              <div id="hud-p2-hp-delay" class="hp-bar-delay" style="width:100%"></div>
+              <div id="hud-p2-hp" class="hp-bar-fill p2" style="width:100%"></div>
+              <span id="hud-p2-hp-txt" class="hp-txt">1000/1000</span>
+            </div>
+            <div id="hud-p2-passives" class="hud-mini-tags"></div>
+          </div>
+        </div>
+
+        <!-- 阶段A + B 覆盖层：3秒盲盒抽角色 & 5秒词条 5选3 -->
+        <div id="draft-overlay" class="draft-overlay hidden">
+          <!-- 动态切换：抽角色盲盒 / 词条5选3 -->
+        </div>
+
+        <!-- 关键时机 QTE 弹反 / 狂点提示按钮（出现时抓时机点按大幅提胜率） -->
+        <button id="qte-counter-btn" class="qte-counter-btn hidden">
+          ⚡ 抓时机！点我【极限弹反/哈气】！
+        </button>
+
+        <!-- 底部操作栏：自动开关 + 最多 5 个主动技能按钮（1普通主动 + 0~1主动究极 + 0~3主动词条） -->
+        <div id="battle-hud-bottom" class="battle-hud-bottom">
+          <div class="control-mode-bar">
+            <button id="btn-toggle-auto" class="btn-auto-mode active">
+              🤖 自动释放: <strong>开启</strong> (手点可抢先抓贴脸时机!)
+            </button>
+            <button id="btn-quick-rematch" class="btn-rematch-mini" title="立即重开一局">🔄 秒重开</button>
+          </div>
+          <div id="active-skill-bar" class="active-skill-bar">
+            <!-- 动态生成 1 ~ 5 个主动技能按钮，被动槽位显示在上方状态条 -->
+          </div>
+        </div>
+
+        <!-- 结算覆盖层：胜负 + 狂送十连抽奖励 -->
+        <div id="result-overlay" class="result-overlay hidden">
+          <div class="result-card">
+            <div id="res-Stamp" class="res-stamp">逆天绝杀!!</div>
+            <h2 id="res-title" class="res-title">胜利 VICTORY</h2>
+            <p id="res-subtitle" class="res-subtitle">手动抓时机完美触发 2 次，胜率加成拉满！</p>
+            <div class="res-reward-box">
+              <div class="reward-headline">🎉 战后狂暴升级奖励！</div>
+              <div class="reward-items">
+                <span class="rw-pill">🎟️ 抽卡券 <strong>+20</strong></span>
+                <span class="rw-pill">💎 保底币 <strong>+35</strong></span>
+                <span class="rw-pill">⬆️ 等级经验 <strong>+100%</strong></span>
+              </div>
+            </div>
+            <div class="res-actions">
+              <button id="btn-res-gacha" class="btn-res gacha">🎰 立即去抽十连</button>
+              <button id="btn-res-again" class="btn-res again">⚡ 再来一局 (自动盲盒)</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 右侧素材替换与录制说明栏 -->
+    <div class="studio-sidebar right-bar">
+      <h2>🎨 素材一键替换说明</h2>
+      <p class="side-note">当前使用内置<strong>高能程序化贴图 + WebAudio鬼畜合成音效</strong>，开箱即录！</p>
+      <p class="side-note">随时把你的 PNG 梗图或 MP3 音效放进项目文件夹即可自动覆盖：</p>
+      <div class="asset-path-box">
+        <code>assets/images/dayun.png</code> (大运百吨王)<br/>
+        <code>assets/images/hajimi.png</code> (哈基米耄耋)<br/>
+        <code>assets/images/laoda.png</code> (肘击王牢大)<br/>
+        <code>assets/images/kunge.png</code> (练习生坤哥)
+      </div>
+      <h2>📈 胜率平衡原理</h2>
+      <ul class="hotkey-list">
+        <li><strong>纯自动 40~60%</strong>：DVD随机弹跳 + 技能散射角 + 劣势方怒气/暴击补偿（橡皮筋机制）+ AI镜像匹配稀有度。</li>
+        <li><strong>手动提胜率 (65~80%)</strong>：自动AI卡CD乱放技能容易空大；手动在<strong>两球贴脸瞬间</strong>点主动技/大招，或点击屏幕中央出现的<strong>【⚡极限弹反】</strong>，即可打出双倍暴击与打断！</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/battle.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
