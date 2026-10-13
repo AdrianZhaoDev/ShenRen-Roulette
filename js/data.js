@@ -6,7 +6,7 @@
 window.MEME_DATA = {
   // 五大流派定义（用于UI标签、5选3流派共鸣与稳定成型）
   archetypes: {
-    colossus: { id: "colossus", name: "🟢 蒙多巨像流", color: "#00ff88", desc: "心之钢无限叠体型+血量，后期大到超出屏幕直接碾压！" },
+    colossus: { id: "colossus", name: "🟢 蒙多巨像流", color: "#00ff88", desc: "心之钢无限叠体型+血量，体型与生命持续成长，近身碾压对手！" },
     assassin: { id: "assassin", name: "🔴 秒杀赌狗流", color: "#ff2a54", desc: "开局爆发+概率9999真伤斩杀，要么3秒秒人，要么被拖死！" },
     mage:     { id: "mage",     name: "🔵 无限火力法术流", color: "#00f0ff", desc: "技能极速冷却+多重弹幕复制，满屏激光弹幕洗地！" },
     vamp:     { id: "vamp",     name: "🟣 不死狂徒回血流", color: "#b829ff", desc: "脱战狂回+受击反伤+溢出血量转护盾，打不死的蟑螂！" },
@@ -28,7 +28,7 @@ window.MEME_DATA = {
       pityPrice: 120,
       corePassives: [
         { id: "dy_p1", name: "百吨惯性", desc: "碰墙反弹后移速+25%，下次撞击附带55点泥头车碾压伤害并叠加1层体型" },
-        { id: "dy_p2", name: "强制转生", desc: "自身每损失15%生命，体积膨胀8%且撞击震屏翻倍" }
+        { id: "dy_p2", name: "强制转生", desc: "自身每损失15%生命，体积膨胀8%，每个损血阶段只触发一次" }
       ],
       normalSkills: [
         {
@@ -83,9 +83,15 @@ window.MEME_DATA = {
           pityPrice: 200,
           cutinTitle: "【究极奥义】异世界转生百吨专列!!",
           cutinSub: "完了完了！前面是泥头车车队！快抓落地红圈闪避！",
-          cutinBg: "linear-gradient(135deg, #4a0000, #ff3b30, #ff9500)",
-          desc: "【全屏动画大招】播放泥头车长鸣前摇动画，0.8秒后召唤百吨王轰炸目标区域（可抓最后一瞬闪避缓解85%伤害）！",
-          shout: "全员准备转生!!"
+          cutinBg: "linear-gradient(135deg, #2d0200 0%, #8f1100 45%, #ff3b30 78%, #ffb800 100%)",
+          cutinTheme: "dayun",
+          cutinChant: "隐藏着异世界力量的钥匙啊 · 解除百吨王限速封印！",
+          cutinBadge: "🚛 异世界转生快递 · 封印解除",
+          cutinSealText: "DAYUN EXPRESS // ISEKAI SEAL RELEASE // HUNDRED-TON OVERDRIVE",
+          cutinProps: ["🚛", "⚠️", "⚡", "💥", "🛞", "🔥"],
+          cutinStages: ["✦ 第一幕：百吨魔法阵展开 ✦", "✦ 第二幕：远光灯全开 · 泥头车变身 ✦", "✦ 第三幕：锁定目标 · 全速撞击衔接 ✦"],
+          desc: "【全屏动画大招】播放泥头车长鸣前摇动画，1.55秒后召唤百吨王轰炸目标区域（最后0.75秒成功闪避可取消本次大招）！",
+          shout: "隐藏着异世界力量的钥匙啊！全员准备转生!!"
         },
         {
           id: "dy_u2",
@@ -114,7 +120,7 @@ window.MEME_DATA = {
       rarity: "SSR",
       pityPrice: 120,
       corePassives: [
-        { id: "hj_p1", name: "应激哈气", desc: "受到撞击时35%概率触发哈气反震，反弹60点真实伤害并打断对手" },
+        { id: "hj_p1", name: "应激哈气", desc: "受到撞击时35%概率触发哈气反震，追加60点基础反击伤害" },
         { id: "hj_p2", name: "九命猫薄荷", desc: "生命首次低于30%时瞬间回复220血并进入4秒红温狂暴" }
       ],
       normalSkills: [
@@ -140,7 +146,7 @@ window.MEME_DATA = {
           type: "active",
           effectKind: "proj_burst",
           baseDamage: 125,
-          desc: "投掷旋转猫砂盆追踪对手，命中附加减速毒雾",
+          desc: "向对手投掷旋转猫砂盆，命中附加减速毒雾",
           shout: "吃我满盆猫砂!!"
         },
         {
@@ -169,10 +175,16 @@ window.MEME_DATA = {
           baseDamage: 310,
           pityPrice: 200,
           cutinTitle: "【究极奥义】耄耋红温·千爪破防杀!!",
-          cutinSub: "急了急了彻底红温了！锁定0.8秒后瞬移扑杀！",
-          cutinBg: "linear-gradient(135deg, #3b1100, #ff5500, #ffe600)",
-          desc: "【全屏动画大招】全屏特写红温哈气动画，锁定目标0.8秒后瞬移五连抓（抓落地瞬间可极限闪避）！",
-          shout: "彻底疯狂哈基米!!"
+          cutinSub: "急了急了彻底红温了！锁定1.55秒后瞬移扑杀！",
+          cutinBg: "linear-gradient(135deg, #2b0700 0%, #9c2700 45%, #ff5500 78%, #ffe600 100%)",
+          cutinTheme: "hajimi",
+          cutinChant: "隐藏着哈基米力量的猫薄荷啊 · 在我面前显示红温真身！",
+          cutinBadge: "😾 耄耋红温形态 · 封印解除",
+          cutinSealText: "HAJIMI MAODIE // CARDCAPTOR FURY // THOUSAND-CLAW OVERHEAT",
+          cutinProps: ["😾", "🐾", "💢", "🐟", "🔥", "⚡"],
+          cutinStages: ["✦ 第一幕：猫薄荷星阵唤醒 ✦", "✦ 第二幕：血压拉满 · 耄耋红温变身 ✦", "✦ 第三幕：千爪残影 · 瞬移扑杀衔接 ✦"],
+          desc: "【全屏动画大招】全屏特写红温哈气动画，锁定目标1.55秒后瞬移五连抓（抓落地瞬间可极限闪避）！",
+          shout: "咕咕嘎嘎！彻底疯狂哈基米!!"
         },
         {
           id: "hj_u2",
@@ -201,8 +213,8 @@ window.MEME_DATA = {
       rarity: "SSR",
       pityPrice: 140,
       corePassives: [
-        { id: "ld_p1", name: "凌晨四点半", desc: "暴击率常驻提升25%，每次暴击飘出巨型『孩子们！』并削减敌方架势" },
-        { id: "ld_p2", name: "曼巴铁肘", desc: "两球直接碰撞时，额外追加70点无视防御的肘击伤害" }
+        { id: "ld_p1", name: "凌晨四点半", desc: "暴击率常驻提升25%，每次暴击飘出『孩子们！』并削减敌方架势" },
+        { id: "ld_p2", name: "曼巴铁肘", desc: "两球直接碰撞时，额外追加70点基础肘击伤害" }
       ],
       normalSkills: [
         {
@@ -256,10 +268,16 @@ window.MEME_DATA = {
           baseDamage: 335,
           pityPrice: 220,
           cutinTitle: "【究极奥义】孩子们·曼巴直升机天降正义!!",
-          cutinSub: "See You Again 响起了！0.8秒后螺旋桨重肘轰击红圈！",
-          cutinBg: "linear-gradient(135deg, #1b0036, #7928ca, #ff0080)",
-          desc: "【全屏动画大招】触发全屏紫金曼巴觉醒动画，0.8秒后从天而降毁灭重肘（可极限闪避躲开核心冲击）！",
-          shout: "孩子们我回来了!!"
+          cutinSub: "See You Again 响起了！1.55秒后螺旋桨重肘轰击红圈！",
+          cutinBg: "linear-gradient(135deg, #16002c 0%, #561496 48%, #9b26ff 78%, #ffe600 100%)",
+          cutinTheme: "laoda",
+          cutinChant: "凌晨四点半的星光啊 · 赐予我紫金冰红茶的曼巴真身！",
+          cutinBadge: "🚁 紫金曼巴战神 · 封印解除",
+          cutinSealText: "MAMBA FOREVER // 24-8 GOLDEN AURA // HELICOPTER ELBOW DROP",
+          cutinProps: ["🚁", "🏀", "🍹", "👑", "💜", "⚡"],
+          cutinStages: ["✦ 第一幕：紫金24号星阵降临 ✦", "✦ 第二幕：冰红茶灌注 · 曼巴觉醒变身 ✦", "✦ 第三幕：螺旋桨锁定 · 天降重肘衔接 ✦"],
+          desc: "【全屏动画大招】触发全屏紫金曼巴觉醒动画，1.55秒后从天而降毁灭重肘（可极限闪避躲开核心冲击）！",
+          shout: "孩子们我回来了！曼巴出击!!"
         },
         {
           id: "ld_u2",
@@ -343,10 +361,16 @@ window.MEME_DATA = {
           baseDamage: 325,
           pityPrice: 220,
           cutinTitle: "【究极奥义】练习生两年半·万凰朝宗篮球陨石!!",
-          cutinSub: "中分头背带裤全屏公演开始！注意躲避0.8秒后的陨石红圈！",
-          cutinBg: "linear-gradient(135deg, #001f3f, #00d4ff, #ff0055)",
-          desc: "【全屏动画大招】全场黑屏C位灯光秀前摇，0.8秒后天降巨型燃烧篮球砸向目标（可抓瞬间闪避）！",
-          shout: "唱跳RAP终极奥义!!"
+          cutinSub: "中分头背带裤全屏公演开始！注意躲避1.55秒后的陨石红圈！",
+          cutinBg: "linear-gradient(135deg, #001329 0%, #004e8c 45%, #00d4ff 78%, #ff2a54 100%)",
+          cutinTheme: "kunge",
+          cutinChant: "修炼两年半的唱跳RAP之力啊 · 化作中分背带裤舞台降临！",
+          cutinBadge: "🏀 两年半C位公演 · 封印解除",
+          cutinSealText: "TWO AND A HALF YEARS // KUN STAGE // PHOENIX BASKETBALL METEOR",
+          cutinProps: ["🏀", "🐔", "🎵", "🪶", "✨", "🎤"],
+          cutinStages: ["✦ 第一幕：两年半公演星阵点亮 ✦", "✦ 第二幕：背带裤铁山靠 · 坤哥C位变身 ✦", "✦ 第三幕：万凰朝宗 · 陨石篮球衔接 ✦"],
+          desc: "【全屏动画大招】全场黑屏C位灯光秀前摇，1.55秒后天降巨型燃烧篮球砸向目标（可抓瞬间闪避）！",
+          shout: "你干嘛哎哟！唱跳RAP终极奥义!!"
         },
         {
           id: "kg_u2",
@@ -376,7 +400,7 @@ window.MEME_DATA = {
       unlockedDefault: true,
       cooldown: 0,
       pityPrice: 60,
-      desc: "【巨像流核心】每次肉搏碰撞发出『铛！』声，永久增加65最大生命且体型变大5%（无上限，可超出屏幕）！",
+      desc: "【巨像流核心】每次肉搏碰撞发出『铛！』声，永久增加65最大生命且体型变大5%（生命成长持续累积，体型在场地安全上限内增长）！",
       shout: "铛!!心之钢+1!!"
     },
     {
@@ -391,9 +415,15 @@ window.MEME_DATA = {
       heal: 220,
       pityPrice: 180,
       cutinTitle: "【巨像觉醒】蒙多医生·狂暴巨大化!!",
-      cutinSub: "体型暴涨35%！缓慢持续回血！准备把整个屏幕塞满！",
-      cutinBg: "linear-gradient(135deg, #003311, #00ff88, #aaff00)",
-      desc: "【彩色主动】立即回复220血，永久膨胀25%体型！体型越大碰撞碾压伤害越高，后期直接塞满整个屏幕！",
+      cutinSub: "体型增长25%，立即回复220血！",
+      cutinBg: "linear-gradient(135deg, #00240c 0%, #007a33 48%, #00ff88 80%, #ccff00 100%)",
+      cutinTheme: "colossus",
+      cutinChant: "隐藏着巨像心之钢的生命力啊 · 让我的体型突破天际吧！",
+      cutinBadge: "🟢 蒙多巨像真身 · 封印解除",
+      cutinSealText: "COLOSSUS HEARTSTEEL // INFINITE GROWTH // MUNDO GOES WHERE HE PLEASES",
+      cutinProps: ["🟢", "🛡️", "💪", "⚡", "💚", "🔨"],
+      cutinStages: ["✦ 第一幕：心之钢巨像法阵共鸣 ✦", "✦ 第二幕：生命狂涌 · 体型暴涨变身 ✦", "✦ 第三幕：巨像降临 · 碾压全场衔接 ✦"],
+      desc: "【彩色主动】立即回复220血，永久膨胀25%体型！体型越大碰撞碾压伤害越高，体型受场地安全上限保护！",
       shout: "蒙多觉得你是个大娘们!!"
     },
     {
@@ -404,7 +434,7 @@ window.MEME_DATA = {
       type: "passive",
       unlockedDefault: true,
       cooldown: 0,
-      desc: "【巨像流】周身常驻火焰光环（范围随体型无限放大），每秒自动灼烧范围内对手45~120点生命",
+      desc: "【巨像流】周身常驻火焰光环（范围随体型无限放大），持续灼烧近身对手，伤害随体型成长",
       shout: "日炎烤肉咯!!"
     },
     {
@@ -441,7 +471,7 @@ window.MEME_DATA = {
       unlockedDefault: true,
       cooldown: 0,
       pityPrice: 180,
-      desc: "【秒杀流核心】每次攻击有6%概率（对手血量低于35%时翻倍至15%）直接触发『9999断头台秒杀』瞬间清空对手血条！",
+      desc: "【秒杀流核心】每次攻击有6%概率（对手血量低于35%时提升至15%）直接触发『9999断头台秒杀』瞬间清空对手血条！",
       shout: "🎰9999逆天秒杀!!"
     },
     {
@@ -483,7 +513,7 @@ window.MEME_DATA = {
     {
       id: "pk_asn_5",
       archetype: "assassin",
-      name: "收集者5%直接处决",
+      name: "收集者12%直接处决",
       rarity: "R",
       type: "passive",
       unlockedDefault: true,
@@ -496,13 +526,13 @@ window.MEME_DATA = {
     {
       id: "pk_mag_1",
       archetype: "mage",
-      name: "无限火力80%急速",
+      name: "无限火力65%急速",
       rarity: "UR",
       type: "passive",
       unlockedDefault: true,
       cooldown: 0,
       pityPrice: 180,
-      desc: "【法术流核心】所有主动技能与大招冷却速度加快65%！并且每次释放技能额外 bắn 出2颗奥术飞弹！",
+      desc: "【法术流核心】所有主动技能与大招冷却速度加快65%！并且每次释放技能额外发出2颗奥术飞弹！",
       shout: "🔥无限火力全开!!"
     },
     {
@@ -516,9 +546,15 @@ window.MEME_DATA = {
       baseDamage: 240,
       pityPrice: 180,
       cutinTitle: "【法术奥义】前方高能·亿万彩虹弹幕雨!!",
-      cutinSub: "满屏弹幕护体正在蓄力！0.8秒后覆盖轰炸！",
-      cutinBg: "linear-gradient(135deg, #001133, #00f0ff, #b829ff)",
-      desc: "【彩色主动】播放全屏弹幕前摇，随后向全场倾泻12颗高能追踪弹幕，视觉统治力拉满！",
+      cutinSub: "满屏弹幕护体正在蓄力！1.55秒后覆盖轰炸！",
+      cutinBg: "linear-gradient(135deg, #000d29 0%, #0044aa 45%, #00f0ff 78%, #b829ff 100%)",
+      cutinTheme: "mage",
+      cutinChant: "无限火力的奥术星辰啊 · 倾泻满屏彩虹弹幕洗礼战场吧！",
+      cutinBadge: "🔵 无限法神形态 · 封印解除",
+      cutinSealText: "ARCANE OVERDRIVE // UNLIMITED BARRAGE // RAINBOW STARLIGHT",
+      cutinProps: ["🔵", "✨", "🌟", "🔮", "⚡", "🌈"],
+      cutinStages: ["✦ 第一幕：奥术无限星阵展开 ✦", "✦ 第二幕：法力沸腾 · 弹幕女神变身 ✦", "✦ 第三幕：亿万彩虹 · 全屏轰炸衔接 ✦"],
+      desc: "【彩色主动】播放全屏弹幕前摇，随后向目标方向倾泻12颗高能散射弹幕，视觉统治力拉满！",
       shout: "前方高能弹幕洗地!!"
     },
     {
@@ -529,7 +565,7 @@ window.MEME_DATA = {
       type: "passive",
       unlockedDefault: true,
       cooldown: 0,
-      desc: "【法术流】每次释放主动技能，立即向对手迸发3道闪电弹幕（每道45伤）",
+      desc: "【法术流】每次释放技能，立即向对手迸发3道闪电弹幕（每道45伤）",
       shout: "卢登闪电溅射!!"
     },
     {
@@ -568,7 +604,7 @@ window.MEME_DATA = {
       unlockedDefault: true,
       cooldown: 0,
       pityPrice: 60,
-      desc: "【回血流核心】每秒固定恢复3.5%最大生命值！进入中后期恢复量翻倍，溢出的治疗自动转化为白盾！",
+      desc: "【回血流核心】每秒固定恢复3.5%最大生命值！中期恢复量乘1.6，后期乘2.4，溢出的治疗自动转化为白盾！",
       shout: "💚狂徒呼吸回血!!"
     },
     {
@@ -580,7 +616,7 @@ window.MEME_DATA = {
       unlockedDefault: true,
       cooldown: 0,
       pityPrice: 60,
-      desc: "【回血流】造成的所有碰撞与技能伤害，38%转化为自身生命值与护盾！",
+      desc: "【回血流】造成的所有碰撞与技能实际伤害，38%转化为自身生命值，溢出治疗转护盾！",
       shout: "大口吸血续命!!"
     },
     {
@@ -681,7 +717,13 @@ window.MEME_DATA = {
       pityPrice: 180,
       cutinTitle: "【武学奥义】静如处子·心眼子弹时间!!",
       cutinSub: "看破一切破绽！冻结全场2秒并连续寸拳暴打！",
-      cutinBg: "linear-gradient(135deg, #2b2200, #ffe600, #ff8800)",
+      cutinBg: "linear-gradient(135deg, #241900 0%, #8a5a00 45%, #ffe600 78%, #ff8800 100%)",
+      cutinTheme: "sifu",
+      cutinChant: "木人桩与铜钱护符的武德啊 · 开启心眼冻结时空万物！",
+      cutinBadge: "🟡 宗师心眼觉醒 · 封印解除",
+      cutinSealText: "SIFU WUDE // TIME FREEZE FOCUS // ONE-INCH PUNCH EXECUTION",
+      cutinProps: ["🟡", "🥋", "🪙", "👊", "⚡", "⏱️"],
+      cutinStages: ["✦ 第一幕：太极铜钱卦阵运转 ✦", "✦ 第二幕：重返巅峰 · 武道宗师变身 ✦", "✦ 第三幕：时停破绽 · 寸拳连打衔接 ✦"],
       desc: "【彩色主动】开启《师父》专注心眼冻结对手2.0秒，期间我方所有攻击必定暴击且打爆架势条！",
       shout: "看破你的破绽了!!"
     }
@@ -737,7 +779,10 @@ class GameStore {
       equippedUlt,
       unlockedPerks,
       perkLevels,
-      autoBattle: true
+      autoBattle: true,
+      matchMode: "quick",
+      settings: { volume: 0.65, muted: false, voice: true, effects: "full" },
+      pendingPulls: []
     };
   }
 
@@ -747,15 +792,41 @@ class GameStore {
       if (!raw) return this.getDefaultState();
       const parsed = JSON.parse(raw);
       const def = this.getDefaultState();
-      return {
+      const state = {
         ...def,
         ...parsed,
         unlockedHeroes: { ...def.unlockedHeroes, ...(parsed.unlockedHeroes || {}) },
         unlockedSkills: { ...def.unlockedSkills, ...(parsed.unlockedSkills || {}) },
         skillLevels: { ...def.skillLevels, ...(parsed.skillLevels || {}) },
         unlockedPerks: { ...def.unlockedPerks, ...(parsed.unlockedPerks || {}) },
-        perkLevels: { ...def.perkLevels, ...(parsed.perkLevels || {}) }
+        perkLevels: { ...def.perkLevels, ...(parsed.perkLevels || {}) },
+        equippedNormal: { ...def.equippedNormal, ...(parsed.equippedNormal || {}) },
+        equippedUlt: { ...def.equippedUlt, ...(parsed.equippedUlt || {}) },
+        settings: { ...def.settings, ...(parsed.settings || {}) },
+        pendingPulls: Array.isArray(parsed.pendingPulls) ? parsed.pendingPulls : []
       };
+      for (const key of ["tickets", "pityCoins", "level", "exp"]) {
+        state[key] = Number.isFinite(state[key]) ? Math.max(key === "level" ? 1 : 0, Math.floor(state[key])) : def[key];
+      }
+      state.matchMode = window.GAME_CONFIG.modes[state.matchMode] ? state.matchMode : "quick";
+      state.settings.volume = Number.isFinite(state.settings.volume) ? Math.max(0, Math.min(1, state.settings.volume)) : 0.65;
+      state.settings.effects = state.settings.effects === "reduced" ? "reduced" : "full";
+      state.autoBattle = state.autoBattle !== false;
+      state.preferredArchetype = window.MEME_DATA.archetypes[state.preferredArchetype] ? state.preferredArchetype : "all";
+      for (const levels of [state.skillLevels, state.perkLevels]) {
+        for (const id of Object.keys(levels)) levels[id] = Number.isFinite(levels[id]) ? Math.max(1, Math.floor(levels[id])) : 1;
+      }
+      Object.values(window.MEME_DATA.heroes).forEach((hero) => {
+        for (const [field, skills] of [["equippedNormal", hero.normalSkills], ["equippedUlt", hero.ultSkills]]) {
+          if (!skills.some((skill) => skill.id === state[field][hero.id] && state.unlockedSkills[skill.id])) state[field][hero.id] = def[field][hero.id];
+        }
+      });
+      const allItems = this.getAllPoolItems();
+      state.pendingPulls = state.pendingPulls.slice(0, 10).flatMap((entry) => {
+        const item = allItems.find((it) => it.id === entry?.item?.id && it.poolType === entry.item.poolType);
+        return item && typeof entry.uid === "string" ? [{ ...entry, item, chosenAction: ["unlock", "upgrade", "convert"].includes(entry.chosenAction) ? entry.chosenAction : "convert" }] : [];
+      });
+      return state;
     } catch (e) {
       return this.getDefaultState();
     }
@@ -764,7 +835,13 @@ class GameStore {
   save() {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(this.state));
-    } catch (e) {}
+      this.storageError = false;
+      return true;
+    } catch (e) {
+      this.storageError = true;
+      window.dispatchEvent(new CustomEvent("game-storage-error"));
+      return false;
+    }
   }
 
   getAllPoolItems() {
@@ -847,21 +924,11 @@ class GameStore {
     const results = [];
 
     for (let i = 0; i < count; i++) {
-      const r = Math.random() * 100;
-      let candidates = [];
-      if (count === 10 && i === 9 && r > 28) {
-        candidates = allItems.filter((it) => it.rarity === "SSR" || it.rarity === "UR");
-      } else if (r < 4.5) {
-        candidates = allItems.filter((it) => it.rarity === "UR");
-      } else if (r < 12.5) {
-        candidates = allItems.filter((it) => it.poolType === "hero");
-      } else if (r < 28.5) {
-        candidates = allItems.filter((it) => it.poolType === "skill" && it.rarity !== "UR");
-      } else if (r < 60.0) {
-        candidates = allItems.filter((it) => it.poolType === "perk" && it.rarity === "SR");
-      } else {
-        candidates = allItems.filter((it) => it.poolType === "perk" && it.rarity === "R");
-      }
+      const guaranteed = count === 10 && i === 9 && !results.some((entry) => ["SSR", "UR"].includes(entry.item.rarity));
+      const buckets = window.GAME_CONFIG.gacha.filter((bucket) => !guaranteed || ["SSR", "UR"].includes(bucket.rarity));
+      let roll = Math.random() * buckets.reduce((sum, bucket) => sum + bucket.weight, 0);
+      const bucket = buckets.find((b) => (roll -= b.weight) < 0) || buckets[buckets.length - 1];
+      const candidates = allItems.filter((it) => it.rarity === bucket.rarity && (!bucket.poolType || it.poolType === bucket.poolType));
 
       const picked = candidates[Math.floor(Math.random() * candidates.length)];
       const isDupe = this.isItemOwned(picked);
@@ -889,6 +956,7 @@ class GameStore {
       }
     }
 
+    this.state.pendingPulls = results;
     this.save();
     return results;
   }
@@ -903,7 +971,9 @@ class GameStore {
     let gainedCoins = 0;
     let upgradedCount = 0;
 
+    const pendingIds = new Set(this.state.pendingPulls.map((entry) => entry.uid));
     pullResults.forEach((entry) => {
+      if (!pendingIds.delete(entry.uid)) return;
       if (!entry.isDupe) return;
       const it = entry.item;
       if (entry.chosenAction === "convert" || it.poolType === "hero") {
@@ -919,6 +989,7 @@ class GameStore {
     });
 
     this.state.pityCoins += gainedCoins;
+    this.state.pendingPulls = [];
     this.save();
     return { gainedCoins, upgradedCount };
   }

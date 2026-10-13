@@ -5,15 +5,28 @@ class AppController {
     this.store = window.gameStore;
     this.canvas = document.getElementById("battle-canvas");
     this.engine = new window.BattleEngine(this.canvas);
-    this.pendingPulls = [];
+    this.pendingPulls = this.store.state.pendingPulls;
     this.draftTimerId = null;
+    this.draftGeneration = 0;
+    this.simulating = false;
 
     this.bindEvents();
     this.refreshTopBar();
     this.renderLobby();
+    this.renderGachaStage();
+    this.refreshMode();
+    this.applySettings();
+    this.renderProbabilities();
   }
 
   switchScreen(screenId) {
+    document.body.classList.toggle("in-battle", screenId === "screen-battle");
+    if (screenId !== "screen-battle") {
+      clearInterval(this.draftTimerId);
+      this.draftGeneration++;
+      this.engine.stop();
+      document.getElementById("draft-overlay").classList.add("hidden");
+    }
     document.querySelectorAll(".game-screen").forEach((s) => s.classList.remove("active"));
     const target = document.getElementById(screenId);
     if (target) target.classList.add("active");
@@ -34,10 +47,102 @@ class AppController {
     document.getElementById("ui-level").textContent = `Lv.${st.level}`;
     document.getElementById("ui-tickets").textContent = st.tickets;
     document.getElementById("ui-pity").textContent = st.pityCoins;
+    document.getElementById("ui-exp-fill").style.width = `${Math.min(100, st.exp / window.GAME_CONFIG.rewards.expPerLevel * 100)}%`;
     const redDot = document.getElementById("gacha-red-dot");
     if (redDot) {
       redDot.textContent = st.tickets >= 10 ? `可抽${Math.floor(st.tickets / 10)}十连!` : "狂送十连!";
     }
+  }
+
+  notice(message) {
+    const el = document.getElementById("game-notice");
+    el.textContent = message;
+    el.classList.remove("hidden");
+    clearTimeout(this.noticeTimer);
+    this.noticeTimer = setTimeout(() => el.classList.add("hidden"), 4000);
+  }
+
+  toggleDirectorPanel(open) {
+    const panel = document.getElementById("director-panel");
+    const show = open ?? panel.classList.contains("hidden");
+    panel.classList.toggle("hidden", !show);
+    document.getElementById("btn-director").setAttribute("aria-expanded", String(show));
+    if (!show && panel.contains(document.activeElement)) document.getElementById("btn-director").focus();
+  }
+
+  runDirectorScript(key) {
+    if (key === "t") {
+      this.store.state.tickets += 50;
+      this.store.state.pityCoins += 500;
+      this.store.save();
+      this.refreshTopBar();
+      this.notice("导演调试：已补充 50 张抽卡券和 500 保底币");
+      return true;
+    }
+    if (!["q", "w", "e", "r"].includes(key)) return false;
+    const engine = this.engine;
+    if (!engine.canAct(engine.p1)) {
+      this.notice(engine.running ? "请继续对局，并等待眩晕、时停或大招前摇结束后触发剧情" : "先开始一局对战，再触发固定剧情");
+      return false;
+    }
+    const { p1, p2, arena } = engine;
+    if (key === "q") {
+      p1.hp = 1;
+      p1.immortalTimer = Math.max(p1.immortalTimer, 3.5);
+      p1.activeSlots.forEach((slot) => { slot.cdLeft = 0; });
+      engine.spawnText("🎬剧本：1滴血锁血+全技能就绪!!", p1.x, p1.y - 50, "#ffe600", 24);
+    } else if (key === "w") {
+      p2.hp = 1;
+      engine.spawnText("🎬剧本：对手破防仅剩1滴血!!", p2.x, p2.y - 50, "#ff2a54", 24);
+    } else if (key === "e") {
+      const cx = arena.x + arena.w / 2;
+      const cy = arena.y + arena.h / 2;
+      const gap = (p1.radius + p2.radius) * 0.45;
+      p1.x = cx - gap;
+      p1.y = cy;
+      p2.x = cx + gap;
+      p2.y = cy;
+      engine.spawnText("🎬剧本：贴脸大乱斗!!", cx, cy - 60, "#00eaff", 24);
+    } else if (key === "r") {
+      for (let i = 0; i < 4; i++) {
+        engine.truckHazards.push({
+          owner: p1, x: arena.x - 110 - i * 90,
+          y: arena.y + arena.h * (i + 0.5) / 4,
+          vx: 720, w: 110, h: 54, dmg: 140, hitDone: false
+        });
+      }
+      engine.spawnText("🚛 导演指令：百吨王车队进场!!", arena.x + arena.w / 2, arena.y + arena.h / 2, "#ffe600", 26);
+    }
+    if (!engine.headless) engine.updateTopHudUI();
+    return true;
+  }
+
+  refreshMode() {
+    const mode = this.store.state.matchMode;
+    const rules = window.GAME_CONFIG.modes[mode];
+    document.getElementById("match-mode").value = mode;
+    document.getElementById("match-mode-hint").textContent = `3秒选人 + 5秒词条5选3 · ${rules.duration}秒${rules.name}`;
+    this.engine.mode = mode;
+  }
+
+  renderProbabilities() {
+    const chance = (rarities) => window.GAME_CONFIG.gacha.filter((bucket) => rarities.includes(bucket.rarity)).reduce((sum, bucket) => sum + bucket.weight, 0);
+    document.getElementById("gacha-probabilities").innerHTML = `<span class="prob-ur">UR 究极技/彩词条 ${chance(["UR"])}%</span><span class="prob-ssr">SSR 角色/专属技 ${chance(["SSR"])}%</span><span class="prob-sr">SR/R 技能/词条 ${chance(["SR", "R"])}%</span>`;
+  }
+
+  applySettings() {
+    const settings = this.store.state.settings;
+    window.memeAudio.applySettings(settings);
+    const reduced = settings.effects === "reduced" || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.body.classList.toggle("reduced-effects", reduced);
+    document.getElementById("setting-volume").value = Math.round(settings.volume * 100);
+    document.getElementById("volume-value").textContent = `${Math.round(settings.volume * 100)}%`;
+    document.getElementById("setting-muted").checked = settings.muted;
+    document.getElementById("setting-voice").checked = settings.voice;
+    document.getElementById("setting-effects").value = settings.effects;
+    const autoBtn = document.getElementById("btn-toggle-auto");
+    autoBtn.classList.toggle("active", this.store.state.autoBattle);
+    autoBtn.innerHTML = `自动释放：<strong>${this.store.state.autoBattle ? "开启" : "关闭"}</strong>`;
   }
 
   // 渲染大厅：4大角色切换 & (2固定核心被动 + 1自选普通主动 + 1自选究极技[主动或被动])
@@ -51,11 +156,13 @@ class AppController {
     tabsEl.innerHTML = "";
     heroes.forEach((h) => {
       const unlocked = !!st.unlockedHeroes[h.id];
-      const tab = document.createElement("div");
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.setAttribute("aria-pressed", st.selectedHeroPreview === h.id);
       tab.className = `hero-tab ${st.selectedHeroPreview === h.id ? "active" : ""} ${unlocked ? "" : "locked"}`;
       tab.innerHTML = `
         ${unlocked ? "" : '<span class="lock-badge">未抽到</span>'}
-        <div class="tab-avatar">${h.emoji}</div>
+        <div class="tab-avatar"><img class="hero-portrait" src="${h.imagePath}" alt="${h.name}"></div>
         <div class="tab-name">${h.name}</div>
       `;
       tab.addEventListener("click", () => {
@@ -116,7 +223,7 @@ class AppController {
 
     cardEl.innerHTML = `
       <div class="hero-bio-row">
-        <div class="hero-big-icon" style="background:${curHero.color}">${curHero.emoji}</div>
+        <div class="hero-big-icon" style="background:${curHero.color}"><img class="hero-portrait" src="${curHero.imagePath}" alt="${curHero.name}"></div>
         <div class="hero-bio-info">
           <h3>${curHero.name} ${st.unlockedHeroes[curHero.id] ? "✅已拥有" : "🔒未解锁(去混池抽/保底换)"}</h3>
           <p>${curHero.title}</p>
@@ -130,7 +237,7 @@ class AppController {
 
       <div class="equip-slot-row">
         <div class="slot-group-title">
-          <span>⚔️ 自选普通主动技 (3选1装备 · 抽重卡可翻倍伤害特效)</span>
+          <span>⚔️ 自选普通主动技 (3选1装备 · 升级提高伤害与弹幕规模)</span>
         </div>
         <div class="skill-choice-list">${normalHtml}</div>
       </div>
@@ -164,10 +271,7 @@ class AppController {
       this.confirmPendingDupes();
     }
 
-    if (this.store.state.tickets < count) {
-      // 既然设计是激进狂送抽卡，券不够时直接免费补发20抽助兴！
-      this.store.state.tickets += 20;
-    }
+    if (this.store.state.tickets < count) return this.notice("抽卡券不足，完成对局后可获得奖励。");
     this.store.state.tickets -= count;
     const pulls = this.store.rollMixedPool(count);
     this.pendingPulls = pulls;
@@ -183,6 +287,7 @@ class AppController {
     const stage = document.getElementById("gacha-stage");
     const dupeBar = document.getElementById("gacha-dupe-bar");
     stage.innerHTML = "";
+    if (this.pendingPulls.length === 0) stage.innerHTML = '<div class="gacha-idle-hint">每局奖励抽卡券；十连至少一张 SSR 或 UR。</div>';
 
     const hasDupes = this.pendingPulls.some((p) => p.isDupe);
     if (hasDupes) {
@@ -201,7 +306,7 @@ class AppController {
         if (it.poolType === "hero") {
           bottomHtml = `<div style="font-size:10px;color:#00f0ff;font-weight:800">重复角色 → 自动转化 +${it.pityValue}💎</div>`;
         } else {
-          const upgDesc = it.poolType === "perk" ? "升级(+刷出率)" : "升级(特效翻倍)";
+          const upgDesc = it.poolType === "perk" ? "升级(+刷出率)" : "升级(伤害+28%)";
           const recTag = entry.chosenAction === "upgrade" ? "★推荐" : "";
           bottomHtml = `
             <div class="dupe-choice-group">
@@ -232,6 +337,7 @@ class AppController {
         const i = Number(btn.dataset.idx);
         const act = btn.dataset.act;
         this.pendingPulls[i].chosenAction = act;
+        this.store.save();
         this.renderGachaStage();
       });
     });
@@ -335,6 +441,8 @@ class AppController {
   // 阶段 A：3秒角色随机抽卡跳动（可点击立即锁定，不点则倒计时结束自动随机选定）
   startMatchDraftFlow() {
     clearInterval(this.draftTimerId);
+    this.engine.stop("draft");
+    this.draftGeneration++;
     this.switchScreen("screen-battle");
     document.getElementById("result-overlay").classList.add("hidden");
 
@@ -346,18 +454,18 @@ class AppController {
     const poolIds = unlockedIds.length > 0 ? unlockedIds : ["dayun", "hajimi"];
 
     let activeHeroId = poolIds[Math.floor(Math.random() * poolIds.length)];
-    let timeLeft = 2.6;
+    let timeLeft = 3;
 
     const renderStep1 = () => {
       const cardsHtml = allHeroes
         .map((h) => {
           const isUnlocked = poolIds.includes(h.id);
           return `
-            <div class="roulette-card ${activeHeroId === h.id ? "highlight" : ""}" data-hid="${h.id}" style="opacity:${isUnlocked ? 1 : 0.4}">
-              <div style="font-size:36px">${h.emoji}</div>
+            <button type="button" class="roulette-card ${activeHeroId === h.id ? "highlight" : ""}" data-hid="${h.id}" ${isUnlocked ? "" : "disabled"} style="opacity:${isUnlocked ? 1 : 0.4}">
+              <div class="draft-portrait"><img class="hero-portrait" src="${h.imagePath}" alt="${h.name}"></div>
               <div style="font-size:14px;font-weight:900;margin-top:4px">${h.name}</div>
               <div style="font-size:10px;color:#9499b3">${isUnlocked ? "点击立即锁定" : "未解锁"}</div>
-            </div>
+            </button>
           `;
         })
         .join("");
@@ -394,7 +502,8 @@ class AppController {
         clearInterval(this.draftTimerId);
         this.startPerk5Pick3Flow(activeHeroId);
       } else {
-        renderStep1();
+        draftEl.querySelector(".draft-countdown").textContent = `${timeLeft.toFixed(1)}s`;
+        draftEl.querySelectorAll(".roulette-card").forEach((card) => card.classList.toggle("highlight", card.dataset.hid === activeHeroId));
       }
     }, 250);
   }
@@ -402,17 +511,22 @@ class AppController {
   // 阶段 B：词条 5 选 3（每局先随机一个流派权重，帮助稳定成型）
   startPerk5Pick3Flow(chosenHeroId) {
     clearInterval(this.draftTimerId);
+    if (this.engine.state !== "draft") this.engine.stop("draft");
+    const generation = this.draftGeneration;
     const draftEl = document.getElementById("draft-overlay");
     const draftRoll = this.store.rollFivePerksForDraft(this.store.state.preferredArchetype === "all" ? null : this.store.state.preferredArchetype);
     const focusArch = draftRoll.focusArch;
     const fivePerks = draftRoll.perks;
     const selectedIds = new Set();
-    let timeLeft = 4.5;
+    let timeLeft = 5;
+    let finalized = false;
 
     const finalizeAndFight = () => {
+      if (finalized || generation !== this.draftGeneration || this.engine.state !== "draft") return;
+      finalized = true;
       clearInterval(this.draftTimerId);
       // 不足3个则自动随机补满3个
-      for (const pk of fivePerks) {
+      for (const pk of window.GameRandom.shuffle(fivePerks)) {
         if (selectedIds.size >= 3) break;
         selectedIds.add(pk.id);
       }
@@ -427,7 +541,7 @@ class AppController {
           const isSel = selectedIds.has(pk.id);
           const lv = this.store.state.perkLevels[pk.id] || 1;
           return `
-            <div class="perk-draft-item ${isSel ? "selected" : ""} rarity-${pk.rarity}" data-pid="${pk.id}">
+            <button type="button" class="perk-draft-item ${isSel ? "selected" : ""} rarity-${pk.rarity}" data-pid="${pk.id}" aria-pressed="${isSel}">
               <div>
                 <div style="font-size:13px;font-weight:900">
                   <span class="rarity-tag ${pk.rarity}">${pk.rarity}</span>
@@ -441,7 +555,7 @@ class AppController {
               <div style="font-size:13px;font-weight:900;color:${isSel ? "#00ff88" : "#9499b3"}">
                 ${isSel ? "✅已选" : "点选"}
               </div>
-            </div>
+            </button>
           `;
         })
         .join("");
@@ -468,11 +582,7 @@ class AppController {
             selectedIds.add(pid);
           }
           window.memeAudio.playWallBounce();
-          if (selectedIds.size === 3) {
-            finalizeAndFight();
-          } else {
-            renderStep2();
-          }
+          renderStep2();
         });
       });
 
@@ -494,6 +604,36 @@ class AppController {
   }
 
   bindEvents() {
+    window.addEventListener("game-storage-error", () => this.notice("当前浏览器无法保存进度，请检查存储权限后再刷新。"));
+    document.getElementById("match-mode").addEventListener("change", (event) => {
+      this.store.state.matchMode = event.target.value;
+      this.store.save();
+      this.refreshMode();
+    });
+    const settingsDialog = document.getElementById("settings-dialog");
+    document.getElementById("btn-settings").addEventListener("click", () => {
+      this.settingsPausedBattle = this.engine.running && !this.engine.paused;
+      if (this.engine.running) this.engine.setPaused(true);
+      settingsDialog.showModal();
+    });
+    settingsDialog.addEventListener("close", () => {
+      if (this.settingsPausedBattle && this.engine.running) this.engine.setPaused(false);
+      this.settingsPausedBattle = false;
+    });
+    document.getElementById("btn-close-settings").addEventListener("click", () => settingsDialog.close());
+    for (const id of ["setting-volume", "setting-muted", "setting-voice", "setting-effects"]) {
+      document.getElementById(id).addEventListener("input", () => {
+        this.store.state.settings = {
+          volume: Number(document.getElementById("setting-volume").value) / 100,
+          muted: document.getElementById("setting-muted").checked,
+          voice: document.getElementById("setting-voice").checked,
+          effects: document.getElementById("setting-effects").value
+        };
+        this.store.save();
+        this.applySettings();
+      });
+    }
+    window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", () => this.applySettings());
     // 导航切换
     document.getElementById("btn-start-match").addEventListener("click", () => this.startMatchDraftFlow());
     document.getElementById("btn-open-gacha").addEventListener("click", () => this.switchScreen("screen-gacha"));
@@ -515,6 +655,7 @@ class AppController {
       this.pendingPulls.forEach((p) => {
         if (p.isDupe && p.item.poolType !== "hero") p.chosenAction = "upgrade";
       });
+      this.store.save();
       this.renderGachaStage();
     });
 
@@ -522,6 +663,7 @@ class AppController {
       this.pendingPulls.forEach((p) => {
         if (p.isDupe) p.chosenAction = "convert";
       });
+      this.store.save();
       this.renderGachaStage();
     });
 
@@ -533,10 +675,14 @@ class AppController {
       this.store.state.autoBattle = !this.store.state.autoBattle;
       this.store.save();
       autoBtn.classList.toggle("active", this.store.state.autoBattle);
-      autoBtn.innerHTML = `🤖 自动释放: <strong>${this.store.state.autoBattle ? "开启" : "关闭(纯手操)"}</strong> (手点可抢先抓贴脸时机!)`;
+      this.applySettings();
     });
 
     document.getElementById("btn-quick-rematch").addEventListener("click", () => this.startMatchDraftFlow());
+    document.getElementById("btn-skip-finale").addEventListener("click", () => this.engine.finale?.complete(true));
+    document.getElementById("battle-speed").addEventListener("change", (event) => this.engine.setSpeed(event.target.value));
+    document.getElementById("btn-pause").addEventListener("click", () => this.engine.setPaused(!this.engine.paused));
+    document.getElementById("btn-battle-lobby").addEventListener("click", () => this.switchScreen("screen-lobby"));
     document.getElementById("qte-counter-btn").addEventListener("click", () => this.engine.triggerManualQTE());
     document.getElementById("ultimate-dodge-btn").addEventListener("click", () => this.engine.triggerUltimateDodge());
     document.getElementById("ultimate-dodge-fallback").addEventListener("click", () => this.engine.triggerUltimateDodge());
@@ -552,75 +698,69 @@ class AppController {
     });
 
     // 后台300秒长局平衡模拟器
-    const runSim = () => {
-      const report = this.engine.runHeadlessSimulation(200);
+    const runSim = async () => {
+      if (this.simulating) return;
+      this.simulating = true;
+      const buttons = [document.getElementById("btn-run-sim"), document.getElementById("btn-run-sim-dialog")];
+      buttons.forEach((button) => { button.disabled = true; });
       const txtEl = document.getElementById("sim-result-text");
-      txtEl.innerHTML = `✅ 已完成 <strong>${report.matches}</strong> 局全随机纯自动长局对战：<br/>我方胜率：<strong style="color:#00ff88;font-size:14px">${report.winRate}%</strong> (${report.p1Wins}胜 / ${report.matches - report.p1Wins}负) — 目标区间 40%~60%！`;
+      const detail = document.getElementById("simulation-report");
+      try {
+        const report = await this.engine.runHeadlessSimulation(Number(document.getElementById("sim-matches").value), {
+          seed: Number(document.getElementById("sim-seed").value),
+          mode: this.store.state.matchMode,
+          onProgress: (done, total) => { detail.textContent = txtEl.textContent = `模拟中 ${done}/${total} 局…`; }
+        });
+        this.lastSimulation = report;
+        txtEl.textContent = `${report.matches}局：胜率${report.winRate}% · 平均${report.meanDuration}秒 · 超时${report.timeoutRate}%`;
+        const rows = (group, labels) => Object.entries(group).map(([key, row]) => `<tr><td>${labels[key]?.name || key}</td><td>${row.matches}</td><td>${(row.wins / row.matches * 100).toFixed(1)}%</td><td>${(row.duration / row.matches).toFixed(1)}秒</td><td>${(row.timeouts / row.matches * 100).toFixed(1)}%</td></tr>`).join("");
+        const phases = Object.entries(report.byFinishPhase).map(([phase, count]) => `${this.engine.getPhaseLabel(phase)} ${count}局`).join(" · ");
+        detail.innerHTML = `<p>${window.GAME_CONFIG.modes[report.mode].name} · 种子 ${report.seed} · ${report.matches}局：${report.p1Wins}胜 / ${report.p2Wins}负 / ${report.draws}平</p><p>胜率 ${report.winRate}% · 平均 ${report.meanDuration}秒 · 超时 ${report.timeoutRate}%</p><p>${phases}</p><p>读取当前配装与解锁池，双方自动施法；小样本分组仅供观察。</p><table><thead><tr><th>角色 / 流派UP / 技能均级</th><th>局数</th><th>胜率</th><th>均时</th><th>超时</th></tr></thead><tbody>${rows(report.byHero, window.MEME_DATA.heroes)}${rows(report.byArchetype, window.MEME_DATA.archetypes)}${rows(report.bySkillLevel, {})}</tbody></table>`;
+      } catch (error) {
+        detail.textContent = txtEl.textContent = `模拟失败：${error.message}`;
+      } finally {
+        this.simulating = false;
+        buttons.forEach((button) => { button.disabled = false; });
+      }
     };
     document.getElementById("btn-run-sim").addEventListener("click", runSim);
+    document.getElementById("btn-run-sim-dialog").addEventListener("click", runSim);
+    document.getElementById("btn-open-simulation").addEventListener("click", () => document.getElementById("simulation-dialog").showModal());
+    document.getElementById("btn-close-simulation").addEventListener("click", () => document.getElementById("simulation-dialog").close());
 
-    // 导演录屏作弊快捷键
+    document.getElementById("btn-director").addEventListener("click", () => this.toggleDirectorPanel());
+    document.getElementById("btn-close-director").addEventListener("click", () => this.toggleDirectorPanel(false));
+    document.querySelectorAll("[data-director-script]").forEach((button) => {
+      button.addEventListener("click", () => this.runDirectorScript(button.dataset.directorScript));
+    });
+
+    // 导演录屏作弊快捷键与点击按钮共用剧情逻辑。
     window.addEventListener("keydown", (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.target.closest("input,select,textarea,dialog")) return;
       const k = e.key.toLowerCase();
       if (k === "p") {
         document.body.classList.toggle("pure-record-mode");
+        this.toggleDirectorPanel(false);
+      } else if (k === "h" && !document.body.classList.contains("pure-record-mode")) {
+        this.toggleDirectorPanel();
+      } else if (k === "escape") {
+        this.toggleDirectorPanel(false);
       } else if (e.code === "Space" && this.engine.running) {
         e.preventDefault();
-        this.engine.paused = !this.engine.paused;
+        this.engine.setPaused(!this.engine.paused);
       } else if (k === "d" && this.engine.running) {
         // 手动技术流：D 键等同于最后一瞬究极闪避
         this.engine.triggerUltimateDodge();
       } else if (["1", "2", "3", "4", "5"].includes(k) && this.engine.running) {
         const idx = Number(k) - 1;
         this.engine.castActiveSlot(this.engine.p1, this.engine.p2, idx, true, false);
-      } else if (k === "q" && this.engine.running) {
-        // 剧本：我方锁1滴血绝境翻盘
-        this.engine.p1.hp = 1;
-        this.engine.p1.immortalTimer = 3.5;
-        this.engine.p1.activeSlots.forEach((s) => (s.cdLeft = 0));
-        this.engine.spawnText("🎬剧本：1滴血锁血+全技能就绪!!", this.engine.p1.x, this.engine.p1.y - 50, "#ffe600", 24);
-      } else if (k === "w" && this.engine.running) {
-        // 剧本：敌方变1滴血待斩杀
-        this.engine.p2.hp = 1;
-        this.engine.spawnText("🎬剧本：对手破防仅剩1滴血!!", this.engine.p2.x, this.engine.p2.y - 50, "#ff2a54", 24);
-      } else if (k === "e" && this.engine.running) {
-        // 剧本：强制双方贴脸碰撞
-        const cx = this.engine.arena.x + this.engine.arena.w / 2;
-        const cy = this.engine.arena.y + this.engine.arena.h / 2;
-        this.engine.p1.x = cx - 35;
-        this.engine.p1.y = cy;
-        this.engine.p2.x = cx + 35;
-        this.engine.p2.y = cy;
-      } else if (k === "r" && this.engine.running) {
-        // 剧本：召唤全屏大运冲撞
-        this.engine.castActiveSlot(this.engine.p1, this.engine.p2, 0, true, false);
-        for (let i = 0; i < 4; i++) {
-          this.engine.truckHazards.push({
-            owner: this.engine.p1,
-            x: this.engine.arena.x - 40 - i * 90,
-            y: this.engine.arena.y + 100 + i * 130,
-            vx: 720,
-            w: 110,
-            h: 54,
-            dmg: 140,
-            hitDone: false
-          });
-        }
-        this.engine.spawnText("🚛 导演指令：百吨王车队进场!!", cxOrMid(this.engine), 240, "#ffe600", 26);
-      } else if (k === "t") {
-        this.store.state.tickets += 50;
-        this.store.state.pityCoins += 500;
-        this.store.save();
-        this.refreshTopBar();
+      } else if (["q", "w", "e", "r", "t"].includes(k)) {
+        this.runDirectorScript(k);
       } else if (k === "b") {
         runSim();
       }
     });
   }
-}
-
-function cxOrMid(engine) {
-  return engine.width / 2;
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -639,13 +779,13 @@ window.addEventListener("DOMContentLoaded", () => {
     } else if (shot === "draft1") {
       const activePerks = window.MEME_DATA.perks.filter((p) => p.type === "active").slice(0, 3);
       window.appUI.engine.startMatch("dayun", activePerks);
-      window.appUI.engine.paused = true;
+      window.appUI.engine.setPaused(true);
       window.appUI.startMatchDraftFlow();
       clearInterval(window.appUI.draftTimerId);
     } else if (shot === "draft2") {
       const activePerks = window.MEME_DATA.perks.filter((p) => p.type === "active").slice(0, 3);
       window.appUI.engine.startMatch("dayun", activePerks);
-      window.appUI.engine.paused = true;
+      window.appUI.engine.setPaused(true);
       window.appUI.switchScreen("screen-battle");
       document.getElementById("draft-overlay").classList.remove("hidden");
       window.appUI.startPerk5Pick3Flow("dayun");

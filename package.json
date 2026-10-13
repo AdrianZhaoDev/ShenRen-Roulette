@@ -1,0 +1,5 @@
+{
+  "name": "shenren-roulette",
+  "private": true,
+  "scripts": { "test": "node --test tests/regression.test.cjs" }
+}

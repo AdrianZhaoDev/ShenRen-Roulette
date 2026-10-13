@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>神人对决</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -10,37 +10,63 @@
   <!-- 电脑端背景氛围与录屏辅助栏 -->
   <div id="studio-backdrop">
     <div class="studio-sidebar left-bar">
-      <div class="studio-badge">REC STUDIO // 9:16 竖屏录播台</div>
-      <h2>🎬 导演快捷键（录屏框外）</h2>
+      <div class="studio-badge">REC STUDIO // 16:9 横屏录播台</div>
+      <h2>🎬 导演快捷键（工作台）</h2>
       <ul class="hotkey-list">
         <li><kbd>P</kbd> 切换纯净录屏模式（隐藏周边）</li>
         <li><kbd>Space</kbd> 战斗暂停 / 帧冻结</li>
         <li><kbd>D</kbd> 【技术流】最后一瞬闪避究极技</li>
-        <li><kbd>Q</kbd> 【剧本】我方锁1滴血+怒气全满</li>
+        <li><kbd>Q</kbd> 【剧本】我方锁1滴血+全技能就绪</li>
         <li><kbd>W</kbd> 【剧本】敌方锁1滴血（准备斩杀）</li>
         <li><kbd>E</kbd> 【剧本】双方瞬间贴脸大乱斗</li>
         <li><kbd>R</kbd> 【剧本】天降横祸（全屏大运冲撞）</li>
         <li><kbd>T</kbd> 【调试】直接送 50 抽 + 500 保底币</li>
-        <li><kbd>B</kbd> 【验证】后台秒跑 200 局胜率校准</li>
+        <li><kbd>B</kbd> 【验证】后台运行 200 局胜率校准</li>
       </ul>
       <div id="sim-report-box" class="sim-report">
-        <div class="sim-title">📊 自动对战平衡监测 (目标 40%~60%)</div>
-        <div id="sim-result-text">点击 <kbd>B</kbd> 或下方按钮秒跑 200 局自动战斗检测胜率波动</div>
-        <button id="btn-run-sim" class="studio-btn">⚡ 秒跑 200 局自动胜率测试</button>
+        <div class="sim-title">📊 自动对战平衡监测 (固定种子 · 实测统计)</div>
+        <div id="sim-result-text">点击 <kbd>B</kbd> 或下方按钮运行 200 局自动战斗检测胜率波动</div>
+        <button id="btn-run-sim" class="studio-btn">⚡ 运行 200 局自动胜率测试</button>
       </div>
     </div>
 
-    <!-- 9:16 手机竖屏主舞台 -->
+    <!-- 16:9 横屏主舞台 -->
     <div id="phone-viewport">
       <!-- 微信小游戏顶部状态与胶囊栏（满足微信备案截图规范：截图内小游戏名为当前小游戏名字《神人对决》） -->
       <div id="wx-minigame-bar" class="wx-minigame-bar">
         <span class="wx-game-title">神人对决</span>
-        <div class="wx-capsule">
+          <div class="battle-toolbar">
+            <button id="btn-toggle-auto" class="btn-auto-mode active">
+              🤖 自动释放: <strong>开启</strong> (手点可抢先抓贴脸时机!)
+            </button>
+            <button id="btn-quick-rematch" class="btn-rematch-mini" title="立即重开一局">🔄 秒重开</button>
+            <label class="battle-speed">速度 <select id="battle-speed" aria-label="对战速度"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
+            <button id="btn-pause" class="btn-rematch-mini" aria-label="暂停或继续对战">暂停</button>
+            <button id="btn-battle-lobby" class="btn-rematch-mini">大厅</button>
+          </div>
+        <button id="btn-director" class="settings-trigger director-trigger" aria-controls="director-panel" aria-expanded="false" title="导演剧情面板（H）">导演</button>
+        <button id="btn-settings" class="settings-trigger" aria-label="打开游戏设置">设置</button>
+        <div class="wx-capsule" aria-hidden="true">
           <span class="wx-dots">•••</span>
           <span class="wx-divider"></span>
           <span class="wx-circle">◎</span>
         </div>
       </div>
+      <aside id="director-panel" class="director-panel hidden" aria-labelledby="director-title">
+        <div class="director-heading">
+          <h2 id="director-title">🎬 固定剧情 / 调试</h2>
+          <button id="btn-close-director" type="button" aria-label="收起导演面板">收起</button>
+        </div>
+        <p>开战后点击触发，也可直接按快捷键。暂停、眩晕或大招前摇时，请等待恢复。</p>
+        <div class="director-scripts">
+          <button type="button" data-director-script="q"><kbd>Q</kbd><span>绝境翻盘<small>我方 1 血 · 锁血 3.5 秒 · 技能全就绪</small></span></button>
+          <button type="button" data-director-script="w"><kbd>W</kbd><span>一击收尾<small>敌方生命降至 1 血</small></span></button>
+          <button type="button" data-director-script="e"><kbd>E</kbd><span>贴脸大乱斗<small>双方立即贴脸碰撞</small></span></button>
+          <button type="button" data-director-script="r"><kbd>R</kbd><span>天降横祸<small>四辆大运卡车进场</small></span></button>
+          <button type="button" data-director-script="t"><kbd>T</kbd><span>补充抽卡资源<small>+50 抽卡券 · +500 保底币（保存）</small></span></button>
+        </div>
+        <p class="director-help"><kbd>H</kbd> 展开/收起 · <kbd>Space</kbd> 暂停/继续<br><kbd>P</kbd> 纯净录屏，隐藏导演入口和面板</p>
+      </aside>
       <!-- 顶部全局状态条（大厅与抽卡可见，战斗中自动切换为对战血条） -->
       <header id="top-bar">
         <div class="player-level">
@@ -64,7 +90,11 @@
         <div class="lobby-hero-banner">
           <div class="glitch-tag">全随机肉鸽 × 抽象梗电子斗蛐蛐</div>
           <h1 class="game-logo">神人对决</h1>
-          <div class="winrate-badge">⚖️ 动态天平已开启：纯自动胜率 45~55% | 手操抓时机 70%+</div>
+          <div class="winrate-badge">⚖️ 自动对战 · 手动闪避与弹反 · 五大构筑流派</div>
+          <label class="match-mode-picker">对局模式
+            <select id="match-mode"><option value="quick">录屏短局 · 60秒</option><option value="classic">构筑长局 · 300秒</option></select>
+            <button id="btn-open-simulation" type="button">平衡检测</button>
+          </label>
         </div>
 
         <!-- 当前选中预览角色与配装 (2固定被动 + 1自选普通主动 + 1自选究极技) -->
@@ -84,7 +114,7 @@
         <div class="lobby-cta-area">
           <button id="btn-start-match" class="btn-mega-start">
             <span class="btn-main-txt">⚡ 立即随机匹配开打</span>
-            <span class="btn-sub-txt">3秒盲盒抽人 + 5秒词条5选3 · 狂暴25秒互秒</span>
+            <span class="btn-sub-txt" id="match-mode-hint">3秒选人 + 5秒词条5选3 · 60秒录屏短局</span>
           </button>
 
           <div class="lobby-sub-nav">
@@ -111,13 +141,10 @@
 
         <div class="gacha-banner-box">
           <div class="gacha-title-burst">UR 究极神技 / 逆天彩色词条 UP!</div>
-          <div class="prob-pills">
-            <span class="prob-ur">🌈 UR 究极技/彩词条 3%</span>
-            <span class="prob-ssr">🔥 SSR 新角色/专属技 25%</span>
-            <span class="prob-sr">⚡ SR/R 通用词条 72%</span>
-          </div>
+          <div class="prob-pills" id="gacha-probabilities"></div>
+          <p class="gacha-guarantee">十连至少一张 SSR 或 UR；重复卡选择自动保存，刷新后可继续结算。</p>
           <div class="gacha-rule-note">
-            💡 <strong>重复卡智能分流</strong>：高阶词条推荐【升级】（大幅提升局内5选3刷出率，不破坏平衡）；角色技能【升级】伤害&特效翻倍；均可一键【转化保底币】！
+            💡 <strong>重复卡智能分流</strong>：高阶词条推荐【升级】（大幅提升局内5选3刷出率，不破坏平衡）；角色技能【升级】每级伤害成长约28%，部分技能增加弹幕规模；均可一键【转化保底币】！
           </div>
         </div>
 
@@ -147,7 +174,7 @@
           <button class="btn-back" data-target="screen-lobby">⬅ 返回大厅</button>
           <h2>💎 保底强娶商店</h2>
         </div>
-        <p class="subscreen-desc">重复卡转化的【保底币】可直接强娶未解锁角色、0.5% UR 究极技能与逆天彩色词条！</p>
+        <p class="subscreen-desc">重复卡转化的【保底币】可直接兑换未解锁角色、UR 究极技能与彩色词条！</p>
         <div id="shop-list" class="shop-list"></div>
       </section>
 
@@ -157,14 +184,14 @@
           <button class="btn-back" data-target="screen-lobby">⬅ 返回大厅</button>
           <h2>📜 词条池与5选3刷出权重</h2>
         </div>
-        <p class="subscreen-desc">升级通用词条只提高每局开打前【5选3】的刷出概率权重，确保神仙打架同时维持 40~60% 动态胜率！</p>
+        <p class="subscreen-desc">升级通用词条只提高每局【5选3】的刷出权重，不改变词条的局内基础数值。实际组合表现可在大厅平衡检测中查看。</p>
         <div id="codex-list" class="codex-list"></div>
       </section>
 
-      <!-- 视图 5：局内流程（阶段A: 3秒盲盒抽人 -> 阶段B: 5秒词条5选3 -> 阶段C: 1v1狂暴弹球战斗） -->
+      <!-- 视图 5：局内流程（阶段A: 3秒选人 -> 阶段B: 5秒词条5选3 -> 阶段C: 1v1狂暴弹球战斗） -->
       <section id="screen-battle" class="game-screen">
         <!-- 战斗主 Canvas -->
-        <canvas id="battle-canvas" width="540" height="960"></canvas>
+        <canvas id="battle-canvas" width="960" height="540"></canvas>
 
         <!-- 顶部对战 HUD -->
         <div id="battle-hud-top" class="battle-hud-top">
@@ -201,55 +228,97 @@
           </div>
         </div>
 
-        <!-- 阶段A + B 覆盖层：3秒盲盒抽人 & 5秒词条 5选3 -->
+        <!-- 阶段A + B 覆盖层：3秒选人 & 5秒词条 5选3 -->
         <div id="draft-overlay" class="draft-overlay hidden">
           <!-- 动态切换：抽角色盲盒 / 词条5选3 -->
         </div>
 
-        <!-- 格斗游戏式究极技全屏 Cut-in：前摇阶段冻结战场，最后0.75秒开放闪避 -->
-        <div id="ultimate-cutin-overlay" class="ultimate-cutin-overlay hidden">
+        <!-- 百变星阵角色专属变身 + 究极技全屏 Cut-in：前摇阶段三幕变身演出，最后0.75秒开放闪避 -->
+        <div id="ultimate-cutin-overlay" class="ultimate-cutin-overlay hidden" data-hero="dayun" data-stage="1">
           <div class="cutin-speed-lines"></div>
-          <div class="cutin-panel">
-            <div id="cutin-caster" class="cutin-caster">🚛 大运百吨王发动究极技能</div>
-            <div id="cutin-title" class="cutin-title">【究极奥义】异世界转生百吨专列!!</div>
-            <div id="cutin-subtitle" class="cutin-subtitle">高能前摇锁定！抓最后一瞬闪避可以大幅减伤！</div>
-            <div class="cutin-warning">落地倒计时 <strong id="cutin-timer">1.55s</strong></div>
+          <div class="cutin-magic-circle">
+            <div class="magic-ring outer-ring"></div>
+            <div class="magic-ring star-ring"></div>
+            <div class="magic-ring inner-ring"></div>
+            <div id="cutin-seal-text" class="magic-seal-text">DAYUN EXPRESS // ISEKAI SEAL RELEASE</div>
+          </div>
+          <div class="cutin-ribbons">
+            <span class="ribbon r1"></span>
+            <span class="ribbon r2"></span>
+            <span class="ribbon r3"></span>
+          </div>
+          <div id="cutin-props" class="cutin-props" aria-hidden="true"></div>
+
+          <div class="cutin-stage-wrap">
+            <div class="cutin-card-frame">
+              <div class="card-wing left-wing" aria-hidden="true">🪽</div>
+              <div class="card-wing right-wing" aria-hidden="true">🪽</div>
+              <div class="card-crown">✦ SEAL RELEASE ✦</div>
+              <div class="card-portrait-box">
+                <img id="cutin-portrait" class="cutin-portrait" src="assets/images/dayun.png" alt="角色变身立绘" />
+                <span id="cutin-emoji-fallback" class="cutin-emoji-fallback hidden">🚛</span>
+                <div class="portrait-aura-ring"></div>
+              </div>
+              <div id="cutin-badge" class="card-footer-badge">🚛 异世界转生快递 · 封印解除</div>
+            </div>
+
+            <div class="cutin-panel">
+              <div class="cutin-stage-steps">
+                <span id="cutin-step-1" class="stage-pill active">① 魔法阵唤醒</span>
+                <span id="cutin-step-2" class="stage-pill">② 真身觉醒</span>
+                <span id="cutin-step-3" class="stage-pill">③ 锁定轰击</span>
+              </div>
+              <div id="cutin-stage-tag" class="cutin-stage-tag">✦ 第一幕：百吨魔法阵展开 ✦</div>
+              <div id="cutin-caster" class="cutin-caster">🚛 大运百吨王发动究极技能</div>
+              <div id="cutin-chant" class="cutin-chant">「隐藏着异世界力量的钥匙啊 · 解除百吨王限速封印！」</div>
+              <div id="cutin-title" class="cutin-title">【究极奥义】异世界转生百吨专列!!</div>
+              <div id="cutin-subtitle" class="cutin-subtitle">高能前摇锁定！抓最后一瞬闪避可以大幅减伤！</div>
+              <div class="cutin-warning">
+                <span>落地倒计时 <strong id="cutin-timer">1.55s</strong></span>
+                <div class="cutin-progress-track"><div id="cutin-progress-fill" class="cutin-progress-fill"></div></div>
+              </div>
+            </div>
           </div>
           <button id="ultimate-dodge-btn" class="ultimate-dodge-btn">🥋 最后一瞬！闪避究极技</button>
         </div>
 
         <button id="ultimate-dodge-fallback" class="ultimate-dodge-fallback hidden">⚡ 极限闪避！</button>
+        <button id="qte-counter-btn" class="qte-counter-btn hidden">⚡ 抓时机！极限弹反</button>
 
         <!-- 底部操作栏：自动开关 + 最多 5 个主动技能按钮（1普通主动 + 0~1主动究极 + 0~3主动词条） -->
         <div id="battle-hud-bottom" class="battle-hud-bottom">
-          <div class="control-mode-bar">
-            <button id="btn-toggle-auto" class="btn-auto-mode active">
-              🤖 自动释放: <strong>开启</strong> (手点可抢先抓贴脸时机!)
-            </button>
-            <button id="btn-quick-rematch" class="btn-rematch-mini" title="立即重开一局">🔄 秒重开</button>
-          </div>
           <div id="active-skill-bar" class="active-skill-bar">
             <!-- 动态生成 1 ~ 5 个主动技能按钮，被动槽位显示在上方状态条 -->
           </div>
         </div>
 
-        <!-- 结算覆盖层：胜负 + 狂送十连抽奖励 -->
+        <button id="btn-skip-finale" class="skip-finale hidden">跳过演出 ›</button>
+        <div id="mvp-overlay" class="mvp-overlay hidden" aria-live="polite">
+          <div class="mvp-scenery"></div><div id="mvp-motif" class="mvp-motif"></div>
+          <div class="mvp-portrait"><img id="mvp-image" alt="胜者角色"></div>
+          <div class="mvp-copy"><small id="mvp-scene"></small><div class="mvp-tag">本 场 M V P</div><h2 id="mvp-title"></h2><p id="mvp-name"></p><blockquote id="mvp-line"></blockquote><div id="mvp-stats"></div></div>
+        </div>
+        <!-- 一体化 MVP 演出 + 动态伤害对比进度条 + 战后结算页面 -->
         <div id="result-overlay" class="result-overlay hidden">
-          <div class="result-card">
-            <div id="res-Stamp" class="res-stamp">逆天绝杀!!</div>
-            <h2 id="res-title" class="res-title">胜利 VICTORY</h2>
-            <p id="res-subtitle" class="res-subtitle">手动抓时机完美触发 2 次，胜率加成拉满！</p>
-            <div class="res-reward-box">
-              <div class="reward-headline">🎉 战后狂暴升级奖励！</div>
-              <div class="reward-items">
-                <span class="rw-pill">🎟️ 抽卡券 <strong>+20</strong></span>
-                <span class="rw-pill">💎 保底币 <strong>+35</strong></span>
-                <span class="rw-pill">⬆️ 等级经验 <strong>+100%</strong></span>
+          <div class="mvp-scenery"></div>
+          <div id="res-motif" class="mvp-motif"></div>
+          <div class="result-unified-stage">
+            <div id="result-mvp" class="result-mvp"></div>
+            <div class="result-card">
+              <div class="result-head-row">
+                <div id="res-Stamp" class="res-stamp">逆天绝杀!!</div>
+                <h2 id="res-title" class="res-title">胜利 VICTORY</h2>
               </div>
-            </div>
-            <div class="res-actions">
-              <button id="btn-res-gacha" class="btn-res gacha">🎰 立即去抽十连</button>
-              <button id="btn-res-again" class="btn-res again">⚡ 再来一局 (自动盲盒)</button>
+              <p id="res-subtitle" class="res-subtitle">手动抓时机完美触发 2 次，胜率加成拉满！</p>
+              <div id="result-dmg-dashboard" class="mvp-dmg-dashboard"></div>
+              <div class="res-reward-box">
+                <div class="reward-headline">🎉 战后狂暴升级奖励！</div>
+                <div class="reward-items" id="result-rewards"></div>
+              </div>
+              <div class="res-actions">
+                <button id="btn-res-gacha" class="btn-res gacha">🎰 立即去抽十连</button>
+                <button id="btn-res-again" class="btn-res again">⚡ 再来一局 (自动盲盒)</button>
+              </div>
             </div>
           </div>
         </div>
@@ -269,15 +338,41 @@
       </div>
       <h2>📈 胜率平衡原理</h2>
       <ul class="hotkey-list">
-        <li><strong>纯自动 40~60%</strong>：DVD随机弹跳 + 技能散射角 + 劣势方怒气/暴击补偿（橡皮筋机制）+ AI镜像匹配稀有度。</li>
-        <li><strong>手动提胜率 (65~80%)</strong>：自动AI卡CD乱放技能容易空大；手动在<strong>两球贴脸瞬间</strong>点主动技/大招，或点击屏幕中央出现的<strong>【⚡极限弹反】</strong>，即可打出双倍暴击与打断！</li>
+        <li><strong>自动对战</strong>：随机弹跳 + 技能散射 + 劣势补偿 + AI镜像等级。使用固定种子模拟查看实际表现。</li>
+        <li><strong>手动抓时机</strong>：贴脸释放普通技获得伤害加成；大招前摇最后0.75秒可闪避；弹反每个窗口只能触发一次。</li>
       </ul>
     </div>
   </div>
 
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <h2 id="settings-title">游戏设置</h2>
+    <label>音效音量 <input id="setting-volume" type="range" min="0" max="100" step="5" /><output id="volume-value"></output></label>
+    <label><input id="setting-muted" type="checkbox" /> 静音</label>
+    <label><input id="setting-voice" type="checkbox" /> 技能喊话</label>
+    <label>特效强度 <select id="setting-effects"><option value="full">完整</option><option value="reduced">柔和（减少震屏与闪烁）</option></select></label>
+    <p>设置自动保存；打开设置时暂停当前对局。</p>
+    <button id="btn-close-settings">完成</button>
+  </dialog>
+  <dialog id="simulation-dialog" aria-labelledby="simulation-title">
+    <h2 id="simulation-title">自动对战平衡检测</h2>
+    <div class="simulation-controls">
+      <label>随机种子 <input id="sim-seed" type="number" value="20261012" min="0" max="4294967295" /></label>
+      <label>局数 <select id="sim-matches"><option value="200">200局</option><option value="1000">1000局</option></select></label>
+      <button id="btn-run-sim-dialog">运行模拟</button>
+      <button id="btn-close-simulation">关闭</button>
+    </div>
+    <div id="simulation-report" aria-live="polite">选择大厅对局模式后运行；模拟不会改变存档或当前对局。</div>
+  </dialog>
+  <p class="orientation-hint">横屏游玩体验更好，请将手机横过来。</p>
+  <div id="game-notice" role="status" aria-live="polite" class="hidden"></div>
+  <script src="js/config.js"></script>
   <script src="js/data.js"></script>
   <script src="js/audio.js"></script>
+  <script src="js/effects.js"></script>
+  <script src="js/finale-audio.js"></script>
+  <script src="js/finale.js"></script>
   <script src="js/battle.js"></script>
+  <script src="js/simulation.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,55 @@
+{
+  "purpose": "本地个人试玩的终结与MVP演出",
+  "images": "沿用 assets/sources/manifest.json 中的四张角色原图；新背景为CSS程序绘制，非新增下载图片",
+  "downloaded": [
+    {
+      "file": "finish/ko.mp3",
+      "source": "https://www.myinstants.com/media/sounds/mlg-resource-street-fighter-ko-greenscreen.mp3",
+      "page": "https://www.myinstants.com/en/search/?name=street+fighter+ko",
+      "label": "街机KO片段"
+    },
+    {
+      "file": "finish/kunge-death.mp3",
+      "source": "https://raw.githubusercontent.com/liyupi/dsh-kun-like-pet/main/assets/voice.mp3",
+      "label": "你干嘛片段"
+    },
+    {
+      "file": "finish/dayun-death.mp3",
+      "source": "https://www.myinstants.com/media/sounds/truck-horn.mp3",
+      "label": "通用卡车喇叭，非大运原厂广告音"
+    }
+  ],
+  "reused": [
+    {
+      "file": "finish/hajimi-death.mp3",
+      "source": "assets/sounds/hajimi.mp3",
+      "label": "猫叫退场"
+    },
+    {
+      "file": "laoda.mp3",
+      "label": "原Mamba Out片段，MVP使用完整文件"
+    },
+    {
+      "file": "kunge.mp3",
+      "label": "原鸡你太美片段"
+    }
+  ],
+  "generated": {
+    "engine": "Windows System.Speech / Microsoft Huihui Desktop",
+    "type": "普通中文合成配音，不模仿真人声线",
+    "files": [
+      "finish/comeback.mp3",
+      "finish/attrition.mp3",
+      "finish/timeout.mp3",
+      "finish/draw.mp3",
+      "finish/laoda-death.mp3",
+      "finish/hajimi-mvp.mp3",
+      "finish/dayun-mvp.mp3",
+      "finish/hajimi-slow.mp3",
+      "finish/kunge-slow.mp3",
+      "finish/laoda-slow.mp3",
+      "finish/dayun-slow.mp3"
+    ]
+  },
+  "notes": "语音文件按实际时长依次播放；大运MVP为合成梗台词。所有原声来源仍归各自权利人。"
+}

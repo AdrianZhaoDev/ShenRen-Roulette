@@ -1,0 +1,54 @@
+{
+  "purpose": "本地个人试玩素材；来源记录不代表授权声明",
+  "images": [
+    {
+      "source": "https://raw.githubusercontent.com/hrhello/cxk-ball/master/images/paddle_1.png",
+      "description": "背带裤真人透明图",
+      "character": "练习生坤哥",
+      "file": "assets/images/kunge.png"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/MM-TT-YY/Maodie_Dagou_Jiao/main/maodie.png",
+      "character": "耄耋",
+      "file": "assets/images/hajimi.png"
+    },
+    {
+      "source": "https://freepngimg.com/download/kobe_bryant/20052-7-kobe-bryant-transparent-background.png",
+      "character": "牢大",
+      "file": "assets/images/laoda.png"
+    },
+    {
+      "source": "https://gengtu.net/memes/zhuang-dayun-truck-meme/",
+      "character": "大运",
+      "file": "assets/images/dayun.png"
+    }
+  ],
+  "audio": [
+    {
+      "clipSeconds": 3.5,
+      "source": "https://www.myinstants.com/media/sounds/loudmp3.mp3",
+      "character": "练习生坤哥",
+      "file": "assets/sounds/kunge.mp3"
+    },
+    {
+      "clipSeconds": 8.9,
+      "source": "https://cdn.uwupad.me/5353.mp3",
+      "description": "Mamba Out",
+      "character": "牢大",
+      "file": "assets/sounds/laoda.mp3"
+    },
+    {
+      "clipSeconds": 3.3,
+      "source": "https://raw.githubusercontent.com/MM-TT-YY/Maodie_Dagou_Jiao/main/dead.MP3",
+      "description": "原游戏猫叫死亡音效，非纯哈气",
+      "character": "耄耋",
+      "file": "assets/sounds/hajimi.mp3"
+    },
+    {
+      "blocker": "候选下载站要求登录，其他视频源返回访问限制",
+      "character": "大运",
+      "status": "原声未取得；保留项目已有语音合成及撞击音效"
+    }
+  ],
+  "processing": "本地音频统一响度并在结尾淡出；图片保持原始文件"
+}
