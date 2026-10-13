@@ -50,6 +50,8 @@ class BattleEngine {
     this.ultimateDodgeWindow = 0;
     this.dodgeFlashTimer = 0;
     this.arenaPulse = 0;
+    this.scenario = null;
+    this.scenarioPauseTimer = null;
     this.trails = [];
     this.particleBursts = [];
     this.announcerTimer = 0;
@@ -60,7 +62,9 @@ class BattleEngine {
     this.projectiles = [];
     this.floatingTexts = [];
     this.ringEffects = [];
-    this.truckHazards = [];
+    this.summons = [];
+    this.clones = [];
+    this.phantoms = [];
     this.manualPerfectCount = 0;
 
     // QTE 抓时机弹窗计时
@@ -77,11 +81,225 @@ class BattleEngine {
   }
 
   setSpeed(value) {
-    const speed = Number(value);
-    if (!window.GAME_CONFIG.speed.choices.includes(speed)) return;
+    const requested = Number(value);
+    const speed = this.isRecordingActive() ? 1 : requested;
+    if (!window.GAME_CONFIG.speed.choices.includes(requested)) return;
     this.playbackSpeed = speed;
     this.accumulator = 0;
     this.lastTime = performance.now();
+    if (!this.headless) {
+      const picker = document.getElementById("battle-speed");
+      if (picker) picker.value = String(speed);
+    }
+  }
+
+  static validateScenario(definition) {
+    const recording = !Array.isArray(definition) && definition?.recording === true;
+    const timeline = recording ? definition.timeline : definition;
+    if (!Array.isArray(timeline) || timeline.length === 0) return "剧本必须是非空数组或完整的长剧情对象";
+    if (recording) {
+      if (typeof definition.title !== "string" || !definition.title.trim()) return "长剧情需要 title";
+      if (!Number.isInteger(definition.duration) || definition.duration < 90 || definition.duration > 180) return "长剧情 duration 必须是 90–180 的整数秒数";
+      if (typeof definition.p1HeroId !== "string" || typeof definition.p2HeroId !== "string" || !Object.hasOwn(window.MEME_DATA.heroes, definition.p1HeroId) || !Object.hasOwn(window.MEME_DATA.heroes, definition.p2HeroId)) return "长剧情需要有效的 p1HeroId 和 p2HeroId";
+      const last = timeline[timeline.length - 1];
+      if (!last || last.action !== "finish" || last.at !== definition.duration) return "长剧情最后一条必须是 duration 秒的 finish";
+    }
+    let finishCount = 0;
+    let pauseDuration = 0;
+    for (const [index, cue] of timeline.entries()) {
+      const prefix = `第 ${index + 1} 条：`;
+      if (!cue || !Number.isFinite(cue.at) || cue.at < 0) return `${prefix}at 必须是非负秒数`;
+      if (recording && cue.at > definition.duration) return `${prefix}不能晚于剧情终点`;
+      if (cue.color !== undefined && typeof cue.color !== "string") return `${prefix}color 必须是颜色字符串`;
+      switch (cue.action) {
+        case "hp":
+        case "shield":
+          if (!Number.isFinite(cue.value) || cue.value < 0) return `${prefix}value 必须是非负数`;
+          if (recording && cue.action === "hp" && cue.value === 0) return `${prefix}长剧情请用最后的 finish 收尾，不提前击倒`;
+        case "ult":
+          if (cue.target !== "p1" && cue.target !== "p2") return `${prefix}target 只能是 p1 或 p2`;
+          break;
+        case "stun":
+          if (cue.target !== "p1" && cue.target !== "p2") return `${prefix}target 只能是 p1 或 p2`;
+          if (!Number.isFinite(cue.duration) || cue.duration < 0) return `${prefix}眩晕 duration 必须是非负秒数，0 表示解除`;
+          break;
+        case "pause":
+          if (!Number.isFinite(cue.duration) || cue.duration <= 0 || cue.duration > 2147483.647) return `${prefix}duration 必须是有效的正数秒数`;
+          pauseDuration += cue.duration;
+          break;
+        case "speed":
+          if (!window.GAME_CONFIG.speed.choices.includes(cue.value)) return `${prefix}速度只能是 0.5、1、1.5 或 2`;
+          if (recording && cue.value !== 1) return `${prefix}长剧情固定 1× 播放`;
+          break;
+        case "text":
+        case "caption":
+          if (typeof cue.content !== "string" || !cue.content.trim()) return `${prefix}content 必须是非空文字`;
+          if (cue.action === "caption" && (!Number.isFinite(cue.duration) || cue.duration <= 0)) return `${prefix}字幕 duration 必须是正数`;
+          if (cue.chapter !== undefined && typeof cue.chapter !== "string") return `${prefix}chapter 必须是文字`;
+          break;
+        case "guard":
+          if (!recording) return `${prefix}guard 只用于长剧情对象`;
+          if (cue.target !== "p1" && cue.target !== "p2") return `${prefix}target 只能是 p1 或 p2`;
+          if (!Number.isFinite(cue.value) || cue.value < 0 || cue.value > 1) return `${prefix}guard value 必须在 0 到 1 之间`;
+          break;
+        case "finish":
+          if (!recording || cue.at !== definition.duration) return `${prefix}finish 只用于长剧情终点`;
+          if (cue.target !== "p1" && cue.target !== "p2") return `${prefix}target 只能是 p1 或 p2`;
+          finishCount++;
+          break;
+        case "q":
+        case "w":
+        case "e":
+        case "r":
+          break;
+        default:
+          return `${prefix}未知 action`;
+      }
+    }
+    if (recording && finishCount !== 1) return "长剧情必须且只能有一个 finish";
+    if (recording && definition.duration + pauseDuration + 3.35 > 180) return "长剧情、暂停与终结演出合计不能超过 180 秒";
+    return null;
+  }
+
+  loadScenario(definition) {
+    if (BattleEngine.validateScenario(definition)) return false;
+    const initialSpeed = this.scenario?.initialSpeed ?? this.playbackSpeed;
+    this.clearScenario();
+    const recording = !Array.isArray(definition);
+    this.scenario = {
+      recording, title: recording ? definition.title : "", duration: recording ? definition.duration : null,
+      p1HeroId: recording ? definition.p1HeroId : null, p2HeroId: recording ? definition.p2HeroId : null,
+      timeline: (recording ? definition.timeline : definition).map((cue) => ({ ...cue })).sort((a, b) => a.at - b.at),
+      cursor: 0, initialSpeed, started: false, finished: false, caption: null, chapter: "", hpFloors: { p1: 0, p2: 0 }
+    };
+    if (!this.headless) this.onScenarioChange?.();
+    return true;
+  }
+
+  clearScenario() {
+    const initialSpeed = this.scenario?.initialSpeed;
+    this.scenario = null;
+    if (this.scenarioPauseTimer !== null) this.setPaused(false);
+    if (initialSpeed !== undefined) this.setSpeed(initialSpeed);
+    if (!this.headless) this.onScenarioChange?.();
+  }
+
+  isRecordingActive() {
+    return this.running && !!this.scenario?.recording && this.scenario.started && !this.scenario.finished && !this.finale;
+  }
+
+  recordingHpFloor(fighter) {
+    if (!this.isRecordingActive()) return 0;
+    const key = fighter === this.p1 ? "p1" : fighter === this.p2 ? "p2" : null;
+    return key ? Math.max(1, Math.ceil(fighter.maxHp * this.scenario.hpFloors[key])) : 0;
+  }
+
+  applyRecordingGuards() {
+    if (!this.isRecordingActive()) return;
+    this.p1.hp = Math.max(this.p1.hp, this.recordingHpFloor(this.p1));
+    this.p2.hp = Math.max(this.p2.hp, this.recordingHpFloor(this.p2));
+  }
+
+  updateScenario(headless = this.headless) {
+    const scenario = this.scenario;
+    if (!scenario || (scenario.recording && !scenario.started)) return;
+    const previousCursor = scenario.cursor;
+    let changed = false;
+    if (scenario.caption && scenario.caption.until <= this.elapsed + 1e-9) {
+      scenario.caption = null;
+      changed = true;
+    }
+    while (this.running && !this.paused && !this.finale && scenario.cursor < scenario.timeline.length) {
+      const cue = scenario.timeline[scenario.cursor];
+      if (cue.at > this.elapsed + 1e-9 || !this.executeScenarioCue(cue, headless)) break;
+      scenario.cursor++;
+      if (this.checkFinished()) break;
+    }
+    if (!headless && (changed || scenario.cursor !== previousCursor)) this.onScenarioChange?.();
+  }
+
+  executeScenarioCue(cue, headless) {
+    const { p1, p2, arena } = this;
+    const target = this[cue.target];
+    if (!this.running || this.paused || this.finale || !p1 || !p2) return false;
+    if (["q", "w", "e", "r"].includes(cue.action) && !this.isRecordingActive() && !this.canAct(p1)) return false;
+    if (cue.action === "q") {
+      p1.hp = 1;
+      if (this.isRecordingActive()) this.scenario.hpFloors.p1 = 0;
+      p1.immortalTimer = Math.max(p1.immortalTimer, 3.5);
+      p1.activeSlots.forEach((slot) => { if (!slot.isUlt) slot.cdLeft = 0; });
+      p1.ultimateEnergy = this.getCombatConfig().ultimate.maxEnergy;
+      this.spawnText("🎬剧本：1滴血锁血+普通技能与究极能量就绪!!", p1.x, p1.y - 50, "#ffe600", 24);
+    } else if (cue.action === "w") {
+      p2.hp = 1;
+      if (this.isRecordingActive()) this.scenario.hpFloors.p2 = 0;
+      this.spawnText("🎬剧本：对手破防仅剩1滴血!!", p2.x, p2.y - 50, "#ff2a54", 24);
+    } else if (cue.action === "e") {
+      const cx = arena.x + arena.w / 2;
+      const cy = arena.y + arena.h / 2;
+      const gap = (p1.radius + p2.radius) * 0.45;
+      p1.x = cx - gap;
+      p1.y = cy;
+      p2.x = cx + gap;
+      p2.y = cy;
+      this.spawnText("🎬剧本：贴脸大乱斗!!", cx, cy - 60, "#00eaff", 24);
+    } else if (cue.action === "r") {
+      for (let i = 0; i < 4; i++) {
+        this.summons.push({
+          owner: p1, x: arena.x - 110 - i * 90,
+          y: arena.y + arena.h * (i + 0.5) / 4,
+          vx: 720, w: 110, h: 54, dmg: 140, hitDone: false
+        });
+      }
+      this.spawnText("🚛 导演指令：百吨王车队进场!!", arena.x + arena.w / 2, arena.y + arena.h / 2, "#ffe600", 26);
+    } else if (cue.action === "hp") {
+      if (!target) return false;
+      target.hp = Math.min(target.maxHp, cue.value <= 1 ? target.maxHp * cue.value : cue.value);
+      if (this.isRecordingActive()) this.scenario.hpFloors[cue.target] = Math.min(this.scenario.hpFloors[cue.target], target.hp / target.maxHp);
+    } else if (cue.action === "ult") {
+      if (!target) return false;
+      target.ultimateEnergy = this.getCombatConfig().ultimate.maxEnergy;
+    } else if (cue.action === "speed") {
+      this.setSpeed(cue.value);
+    } else if (cue.action === "text") {
+      this.spawnText(cue.content, arena.x + arena.w / 2, arena.y + arena.h / 2, cue.color || "#ffe600", 26);
+    } else if (cue.action === "caption") {
+      if (!this.scenario) return false;
+      this.scenario.caption = { content: cue.content, color: cue.color || "", until: this.elapsed + cue.duration };
+      if (cue.chapter !== undefined) this.scenario.chapter = cue.chapter;
+    } else if (cue.action === "guard") {
+      if (!this.isRecordingActive() || !target) return false;
+      this.scenario.hpFloors[cue.target] = cue.value;
+      target.hp = Math.max(target.hp, this.recordingHpFloor(target));
+    } else if (cue.action === "finish") {
+      if (!this.isRecordingActive() || !target) return false;
+      this.scenario.finished = true;
+      const attacker = target === p1 ? p2 : p1;
+      target.hp = 0;
+      attacker.hp = Math.max(1, attacker.hp);
+      this.lastLethalHit = { attacker, defender: target, label: "剧情终结", comeback: attacker.hp / attacker.maxHp <= 0.25, attrition: false };
+    } else if (cue.action === "pause") {
+      if (!headless) {
+        this.setPaused(true);
+        const generation = this.generation;
+        const timer = setTimeout(() => {
+          if (generation !== this.generation || this.scenarioPauseTimer !== timer || !this.running) return;
+          this.scenarioPauseTimer = null;
+          this.setPaused(false);
+        }, cue.duration * 1000);
+        this.scenarioPauseTimer = timer;
+      }
+    } else if (cue.action === "shield") {
+      if (!target) return false;
+      target.shield = Math.min(target.maxShield, cue.value <= 1 ? target.maxShield * cue.value : cue.value);
+    } else if (cue.action === "stun") {
+      if (!target) return false;
+      target.stunTimer = cue.duration;
+    } else {
+      return false;
+    }
+    if (!headless) this.updateTopHudUI();
+    return true;
   }
 
   stop(nextState = "idle") {
@@ -89,11 +307,19 @@ class BattleEngine {
     this.finale = null;
     this.finalePlayed = false;
     this.lastLethalHit = null;
+    if (this.scenario) {
+      this.scenario.started = false;
+      this.scenario.finished = false;
+      this.scenario.caption = null;
+      this.scenario.chapter = "";
+    }
     if (!this.headless) {
       document.getElementById('mvp-overlay')?.classList.add('hidden');
       document.getElementById('btn-skip-finale')?.classList.add('hidden');
     }
     this.paused = false;
+    clearTimeout(this.scenarioPauseTimer);
+    this.scenarioPauseTimer = null;
     this.state = nextState;
     this.generation++;
     if (this.frameId !== null) cancelAnimationFrame(this.frameId);
@@ -106,7 +332,14 @@ class BattleEngine {
     this.timeStopOwner = null;
     this.qteTimer = 0;
     this.projectiles = [];
-    this.truckHazards = [];
+    this.summons = [];
+    this.clones = [];
+    this.phantoms = [];
+    for (const f of [this.p1, this.p2]) if (f) {
+      f.morphState = null;
+      f.morphScale.current = f.morphScale.target = 1;
+      f.phantomTimer = 0;
+    }
     this.ringEffects = [];
     this.trails = [];
     this.particleBursts = [];
@@ -114,23 +347,30 @@ class BattleEngine {
     this.ultImpactEffects = [];
     this.skillVfxList = [];
     this.showUltimateCutin(false);
+    this.syncUltimateControls();
+    this.dodgeFlashTimer = 0;
     if (!this.headless) {
       document.getElementById("qte-counter-btn")?.classList.add("hidden");
       document.getElementById("result-overlay")?.classList.add("hidden");
       window.memeAudio.stopVoices();
+      this.onScenarioChange?.();
     }
   }
 
   setPaused(paused) {
     if (!this.running || this.finale) return;
+    clearTimeout(this.scenarioPauseTimer);
+    this.scenarioPauseTimer = null;
     this.paused = !!paused;
-    this.state = paused ? "paused" : (this.pendingUltimate ? "cutin" : "battle");
+    this.state = paused ? "paused" : (this.pendingUltimate ? (this.pendingUltimate.phase === "cutin" ? "cutin" : "climax") : "battle");
+    this.syncUltimateControls();
     this.accumulator = 0;
     this.lastTime = performance.now();
     if (!this.headless) {
       const button = document.getElementById("btn-pause");
       if (button) button.textContent = paused ? "继续" : "暂停";
       if (paused) window.memeAudio.stopVoices();
+      this.onScenarioChange?.();
     }
   }
 
@@ -139,6 +379,10 @@ class BattleEngine {
   }
 
   checkFinished() {
+    if (this.isRecordingActive()) {
+      this.applyRecordingGuards();
+      return false;
+    }
     if (this.running && (this.matchTimeLeft <= 0 || this.p1.hp <= 0 || this.p2.hp <= 0)) {
       this.finishMatch();
       return true;
@@ -152,6 +396,33 @@ class BattleEngine {
 
   hasArchetype(fighter, archetype) {
     return !!fighter && fighter.perks.some((perk) => perk.archetype === archetype);
+  }
+
+  getCombatConfig() { return window.GAME_CONFIG.combat; }
+
+  addUltimateEnergy(fighter, amount) {
+    const ult = this.getCombatConfig().ultimate;
+    fighter.ultimateEnergy = Math.max(0, Math.min(ult.maxEnergy, fighter.ultimateEnergy + amount));
+    return fighter.ultimateEnergy;
+  }
+
+  isUltimateSlot(slot) { return !!slot && slot.isUlt === true; }
+
+  ultimateRatio(type, level) {
+    const ult = this.getCombatConfig().ultimate;
+    const passive = type === "passive";
+    const base = passive ? ult.passiveCoreRatio : ult.activeCoreRatio;
+    const growth = passive ? ult.passiveCoreLevelGrowth : ult.activeCoreLevelGrowth;
+    const cap = passive ? ult.passiveCoreRatioCap : ult.activeCoreRatioCap;
+    return Math.min(cap, base * (1 + (Math.max(1, level) - 1) * growth));
+  }
+
+  beginUltimateSequence(caster, target) {
+    const ult = this.getCombatConfig().ultimate;
+    caster.ultimateEnergy = 0;
+    caster.ultimateSecondaryBudget = target.maxHp * ult.secondaryBudgetRatio;
+    caster.ultimateSequence += 1;
+    caster.ultimateSequenceState = { id: caster.ultimateSequence, remaining: caster.ultimateSecondaryBudget, secondaryDamage: target.maxHp * ult.secondaryDamageRatio };
   }
 
   getPhase(elapsed) {
@@ -251,47 +522,30 @@ class BattleEngine {
   }
 
   startUltimateCutin(caster, target, slot) {
-    if (!this.canAct(caster)) return false;
+    const ult = this.getCombatConfig().ultimate;
+    if (!caster || !target || target.hp <= 0 || !this.canAct(caster) || !this.isUltimateSlot(slot) || slot.isRepeat || caster.ultimateEnergy < ult.maxEnergy) return false;
+    this.beginUltimateSequence(caster, target);
     const hero = window.MEME_DATA.heroes[caster.heroId];
     const source = slot.sourceType === "heroUlt"
       ? hero.ultSkills.find((skill) => skill.id === caster.ultSkill.id)
       : window.MEME_DATA.perks.find((perk) => perk.id === slot.perkId);
     const title = source && source.cutinTitle ? source.cutinTitle : `【究极奥义】${slot.name}!!`;
-    const sub = source && source.cutinSub ? source.cutinSub : "高能前摇锁定！抓最后一瞬闪避可以大幅减伤！";
+    const sub = source?.cutinSub || "特写结束后观察战场落点，临近命中时回避或拆招";
     const bg = source && source.cutinBg ? source.cutinBg : "linear-gradient(135deg, #111, #ffe600, #ff0055)";
     const chant = source && source.cutinChant ? source.cutinChant : `隐藏着神人力量的星阵啊 · 显现 ${caster.name} 的究极真身！`;
     const badge = source && source.cutinBadge ? source.cutinBadge : `${caster.emoji} ${caster.name} · 封印解除`;
     const sealText = source && source.cutinSealText ? source.cutinSealText : `${caster.heroId.toUpperCase()} // CARDCAPTOR SEAL RELEASE`;
     const props = source && Array.isArray(source.cutinProps) ? source.cutinProps : [caster.emoji, "✨", "⚡", "💥", "🌟", "🔥"];
-    const stages = source && Array.isArray(source.cutinStages)
-      ? source.cutinStages
-      : ["✦ 第一幕：魔法星阵唤醒 ✦", "✦ 第二幕：真身变身觉醒 ✦", "✦ 第三幕：锁定目标 · 破空轰击衔接 ✦"];
-
-    this.pendingUltimate = {
-      caster,
-      target,
-      slot,
-      hero,
-      title,
-      sub,
-      bg,
-      chant,
-      badge,
-      sealText,
-      props,
-      stages,
-      stageIndex: 0,
-      total: window.GAME_CONFIG.ultimate.windup,
-      remaining: window.GAME_CONFIG.ultimate.windup,
-      dodgeWindow: window.GAME_CONFIG.ultimate.dodgeWindow,
-      dodged: false
-    };
+    const stages = source && Array.isArray(source.cutinStages) ? source.cutinStages : ["✦ 第一幕：魔法星阵唤醒 ✦", "✦ 第二幕：真身变身觉醒 ✦", "✦ 第三幕：锁定目标 · 破空轰击衔接 ✦"];
+    this.pendingUltimate = { caster, target, slot, hero, title, sub, bg, chant, badge, sealText, props, stages, stageIndex: 0,
+      phase: "cutin", total: ult.cutinDuration, remaining: ult.cutinDuration, dodged: false, countered: false, responseUsed: false,
+      slowRemaining: 0, slowStarted: false, attack: null };
+    this.qteTimer = 0;
+    if (!this.headless) document.getElementById("qte-counter-btn")?.classList.add("hidden");
+    this.syncUltimateControls();
     this.ultimateDodgeWindow = 0;
     this.state = "cutin";
-    if (!this.headless) {
-      this.triggerShake(slot.isUlt ? 8 : 5, 0.18);
-      window.memeAudio.playUltCutinAlarm(caster.heroId, slot.shout || slot.name);
-    }
+    if (!this.headless) { this.triggerShake(slot.isUlt ? 8 : 5, 0.18); window.memeAudio.playUltCutinAlarm(caster.heroId, slot.shout || slot.name); }
     this.showUltimateCutin(true);
     return true;
   }
@@ -302,15 +556,12 @@ class BattleEngine {
     if (!overlay) return;
     if (!visible) {
       overlay.classList.add("hidden");
+      overlay.classList.remove("departing");
       return;
     }
     const pending = this.pendingUltimate;
-    const dodge = document.getElementById("ultimate-dodge-btn");
-    if (dodge) {
-      dodge.classList.toggle("hidden", !pending.target.isPlayer);
-      dodge.classList.remove("danger-window");
-      dodge.disabled = true;
-    }
+    overlay.classList.remove("departing");
+    this.syncUltimateControls();
     overlay.dataset.hero = pending.caster.heroId;
     overlay.dataset.stage = "1";
     overlay.style.setProperty("--cutin-bg", pending.bg);
@@ -371,153 +622,195 @@ class BattleEngine {
     overlay.classList.remove("hidden");
   }
 
-  updateUltimateCutin(dt, headless) {
-    if (!this.pendingUltimate) return false;
-    const pending = this.pendingUltimate;
-    pending.remaining -= dt;
-    this.ultimateDodgeWindow = pending.remaining <= pending.dodgeWindow ? Math.max(0, pending.remaining) : 0;
-    if (this.ultimateDodgeWindow > 0 && !pending.autoDodgeChecked) {
-      pending.autoDodgeChecked = true;
-      if (this.hasPerk(pending.target, "pk_sifu_4") && this.random() < 0.25) pending.dodged = true;
-    }
-
-    const progress = 1 - Math.max(0, pending.remaining) / (pending.total || 1.55);
-    const nextStage = progress < 0.34 ? 0 : progress < 0.7 ? 1 : 2;
-    if (nextStage !== pending.stageIndex) {
-      pending.stageIndex = nextStage;
-      if (!headless) {
-        window.memeAudio.playCutinPhaseCue?.(nextStage, pending.caster.heroId);
-        this.triggerShake(nextStage === 2 ? 12 : 7, 0.14);
+  updateUltimateCutin(dt, headless = this.headless) {
+    if (!this.pendingUltimate || !this.running || this.paused || this.finale) return 0;
+    const ult = this.getCombatConfig().ultimate;
+    let realLeft = dt / this.playbackSpeed, advanced = 0;
+    while (realLeft > 1e-9 && this.pendingUltimate) {
+      const p = this.pendingUltimate;
+      if (p.caster.hp <= 0 || p.target.hp <= 0) { this.clearUltimate(); break; }
+      if (p.phase === "arena" && !p.slowStarted && p.remaining <= ult.dodgeWindow + 1e-9 && p.slot.effectKind !== "pk_col_2") {
+        p.slowStarted = true;
+        p.slowRemaining = ult.slowDuration;
       }
-    }
-
-    if (!headless && typeof document !== "undefined") {
-      const overlay = document.getElementById("ultimate-cutin-overlay");
-      const timer = document.getElementById("cutin-timer");
-      const dodge = document.getElementById("ultimate-dodge-btn");
-      const stageTagEl = document.getElementById("cutin-stage-tag");
-      const progressEl = document.getElementById("cutin-progress-fill");
-      if (overlay) overlay.dataset.stage = String(pending.stageIndex + 1);
-      if (stageTagEl && pending.stages) stageTagEl.textContent = pending.stages[pending.stageIndex] || pending.stages[0];
-      ["cutin-step-1", "cutin-step-2", "cutin-step-3"].forEach((id, idx) => {
-        const stepEl = document.getElementById(id);
-        if (stepEl) stepEl.classList.toggle("active", idx === pending.stageIndex);
-      });
-      if (timer) timer.textContent = `${Math.max(0, pending.remaining).toFixed(2)}s`;
-      if (progressEl) {
-        const pct = Math.max(0, Math.min(100, (pending.remaining / (pending.total || 1.55)) * 100));
-        progressEl.style.width = `${pct}%`;
+      const slowing = p.slowRemaining > 1e-9;
+      const rate = this.playbackSpeed * (slowing ? ult.slowScale : 1);
+      const boundary = p.phase === "arena" && !p.slowStarted && p.slot.effectKind !== "pk_col_2" ? Math.max(0, p.remaining - ult.dodgeWindow) : p.remaining;
+      const slice = Math.min(realLeft, boundary / rate, slowing ? p.slowRemaining : Infinity);
+      const step = slice * rate;
+      p.remaining = Math.max(0, p.remaining - step);
+      if (slowing) p.slowRemaining = Math.max(0, p.slowRemaining - slice);
+      realLeft -= slice; advanced += step;
+      if (p.phase === "cutin") {
+        const stage = Math.min(2, Math.floor((1 - p.remaining / p.total) * 3));
+        if (stage !== p.stageIndex && !headless) window.memeAudio.playCutinPhaseCue?.(stage, p.caster.heroId);
+        p.stageIndex = stage;
+        if (!headless) {
+          const overlay = document.getElementById("ultimate-cutin-overlay");
+          if (overlay) overlay.dataset.stage = String(stage + 1);
+          const timer = document.getElementById("cutin-timer");
+          if (timer) timer.textContent = `${p.remaining.toFixed(2)}s`;
+          const tag = document.getElementById("cutin-stage-tag");
+          if (tag) tag.textContent = p.stages[stage];
+          const bar = document.getElementById("cutin-progress-fill");
+          if (bar) bar.style.width = `${p.remaining / p.total * 100}%`;
+          for (let i = 0; i < 3; i++) document.getElementById(`cutin-step-${i + 1}`)?.classList.toggle("active", i === stage);
+        }
+        if (p.remaining <= 1e-9) this.beginArenaUltimate(headless);
+      } else {
+        const progress = 1 - p.remaining / p.total;
+        p.attack.x = p.attack.fromX + (p.attack.toX - p.attack.fromX) * progress;
+        p.attack.y = p.attack.fromY + (p.attack.toY - p.attack.fromY) * progress;
+        p.caster.morphScale.current += (p.caster.morphScale.target - p.caster.morphScale.current) * (1 - Math.exp(-8 * step));
+        if (p.caster.heroId === "hajimi") {
+          p.caster.x = p.attack.x; p.caster.y = p.attack.y;
+          this.clampFighter(p.caster);
+        }
+        if (p.dodged) {
+          this.updateMorph(p.target, p.caster, step, headless);
+          p.target.x += p.target.vx * step * 2; p.target.y += p.target.vy * step * 2;
+          this.clampFighter(p.target);
+        }
+        this.ultimateDodgeWindow = p.slot.effectKind !== "pk_col_2" && p.remaining <= ult.dodgeWindow + 1e-9 ? p.remaining : 0;
+        if (p.remaining <= 1e-9) {
+          const auto = !p.target.isPlayer || (this.options.autoBattle ?? this.store.state.autoBattle);
+          if (auto && !p.responseUsed && p.slot.effectKind !== "pk_col_2") {
+            const chance = Math.min(0.6, 0.08 + p.target.stance / p.target.maxStance * 0.12 + (this.hasPerk(p.target, "pk_sifu_4") ? 0.25 : 0) + (this.hasPerk(p.target, "pk_sifu_3") ? (72 - p.target.age) * 0.001 : 0));
+            if (this.random() < chance) this.acceptUltimateDodge(p, headless);
+          }
+          this.resolveUltimateCutin(headless);
+        }
       }
-      if (dodge) {
-        dodge.classList.toggle("danger-window", this.ultimateDodgeWindow > 0);
-        dodge.disabled = this.ultimateDodgeWindow <= 0 || pending.dodged;
-      }
+      this.syncUltimateControls();
     }
-    if (pending.remaining <= 0) {
-      this.resolveUltimateCutin(headless);
-    }
-    return true;
+    return advanced;
   }
 
-  resolveUltimateCutin(headless) {
-    const pending = this.pendingUltimate;
-    if (!pending) return;
+  beginArenaUltimate(headless) {
+    const p = this.pendingUltimate;
+    const ult = this.getCombatConfig().ultimate;
+    p.phase = "arena"; p.total = p.remaining = ult.arenaDuration;
+    this.state = "climax";
+    const aerial = p.caster.heroId === "laoda" || p.caster.heroId === "kunge";
+    p.attack = { fromX: aerial ? p.target.x - 180 : p.caster.x, fromY: aerial ? this.arena.y - 90 : p.caster.y,
+      toX: p.target.x, toY: p.target.y, radius: Math.max(65, p.target.radius + 24) };
+    p.attack.x = p.attack.fromX; p.attack.y = p.attack.fromY;
+    p.caster.morphScale.target = 1.8;
+    p.caster.morphState = null;
+    if (!headless) document.getElementById("ultimate-cutin-overlay")?.classList.add("departing");
+    if (!headless) window.memeAudio.playUltImpactLaunch?.(p.caster.heroId);
+  }
+
+  clearUltimate() {
+    if (this.pendingUltimate) this.pendingUltimate.caster.morphScale.target = 1;
     this.pendingUltimate = null;
-    this.state = "battle";
     this.ultimateDodgeWindow = 0;
     this.showUltimateCutin(false);
-    const caster = pending.caster;
-    const target = pending.target;
-    const slot = pending.slot;
-    const lvMult = 1 + (slot.level - 1) * 0.28;
-    const damage = Math.round((slot.baseDamage || 220) * lvMult);
+    this.syncUltimateControls();
+  }
 
-    if (pending.dodged) {
-      if (!headless) {
-        window.memeAudio.playSifuDodge();
-        this.spawnText("🥋 完美闪避！究极技落空！", target.x, target.y - target.radius - 30, "#ffe600", 24);
-        this.particleBursts.push({ x: target.x, y: target.y, color: "#ffe600", count: 38, life: 0.8 });
-        this.triggerShake(14, 0.22);
-      }
-      target.isDodging = true;
-      target.dodgeTimer = 0.55;
-      window.BattleEffects.onDodge(this, target, caster, headless);
-      return;
-    }
-
+  resolveUltimateCutin(headless = this.headless) {
+    const p = this.pendingUltimate;
+    if (!p || p.phase !== "arena" || p.remaining > 1e-9 || this.paused || !this.running) return false;
+    const { caster, target, slot, attack } = p;
+    this.clearUltimate();
+    this.state = "battle";
     if (!headless) {
-      window.memeAudio.playUltImpactLaunch?.(caster.heroId);
-      this.triggerShake(26, 0.42);
-      this.particleBursts.push({ x: target.x, y: target.y, color: caster.accent, count: 60, life: 1.0 });
-      this.spawnText(`💥 ${slot.name} 落地!!`, target.x, target.y - target.radius - 30, "#ff2a54", 28);
-      this.ultImpactEffects.push({
-        heroId: caster.heroId,
-        effectKind: slot.effectKind,
-        fromX: caster.x,
-        fromY: caster.y,
-        toX: target.x,
-        toY: target.y,
-        color: caster.color || "#ff5500",
-        accent: caster.accent || "#ffe600",
-        emoji: caster.emoji,
-        life: 0.68,
-        maxLife: 0.68
-      });
+      this.motionBurst({ x: attack.toX, y: attack.toY, accent: caster.accent }, false);
+      this.skillVfxList.push({ kind: "climax_crater", x: attack.toX, y: attack.toY, color: caster.accent, life: 0.9, maxLife: 0.9 });
+      this.triggerShake(p.dodged ? 8 : 26, 0.4);
     }
-    if (slot.effectKind !== "pk_col_2") this.applyDamage(caster, target, damage, slot.name, true, headless);
-    this.executeUltimateEffect(caster, target, slot, headless);
-    if (!slot.isRepeat) window.BattleEffects.onCast(this, caster, target, slot, headless);
+    if (p.dodged) { target.dodgeTimer = this.getCombatConfig().ultimate.dodgeInvulnerability; return true; }
+    if (slot.effectKind !== "pk_col_2") {
+      this.applyDamage(caster, target, target.maxHp * this.ultimateRatio("active", slot.level) * (p.countered ? 0.5 : 1), slot.name, false, headless, { ultimateCore: true, responseResolved: true });
+      if (!headless) this.spawnText(p.countered ? "CLASH · 极限拆招" : "CRITICAL CLIMAX!!", attack.toX, attack.toY - 85, p.countered ? "#00f0ff" : "#ffe600", 27);
+    }
+    if (p.countered) {
+      const angle = Math.atan2(caster.y - target.y, caster.x - target.x);
+      caster.vx = Math.cos(angle) * 700; caster.vy = Math.sin(angle) * 700;
+      this.applyDamage(target, caster, target.maxHp * this.ultimateRatio("active", slot.level) * this.getCombatConfig().ultimate.counterReflectRatio, "拆招反震", false, headless, { ultimateCore: true, secondary: true, responseResolved: true });
+      this.hitstopTimer = 0.12;
+      this.dodgeFlashTimer = 0.12;
+      if (!headless) window.memeAudio.playClash(true);
+    } else this.executeUltimateEffect(caster, target, slot, headless);
+    return true;
   }
 
   executeUltimateEffect(caster, target, slot, headless) {
     const kind = slot.effectKind;
+    const ult = this.getCombatConfig().ultimate;
     if (kind === "ult_truck_stampede") {
-      const truckCount = 3 + Math.min(5, slot.level);
-      for (let i = 0; i < truckCount; i++) {
-        this.truckHazards.push({ owner: caster, x: this.arena.x - 80 - i * 108, y: this.arena.y + 85 + ((i * 155) % (this.arena.h - 125)), vx: 780, w: 122, h: 58, dmg: Math.round(slot.baseDamage * 0.45), hitDone: false });
-      }
+      for (let i = 0; i < ult.secondaryCount; i++) this.summons.push({ owner: caster, x: this.arena.x - 80 - i * 108, y: this.arena.y + 85 + ((i * 155) % (this.arena.h - 125)), vx: 780, w: 122, h: 58, dmg: caster.ultimateSequenceState.secondaryDamage, ultimateSecondary: true, ultimateSequence: caster.ultimateSequenceState, hitDone: false });
     } else if (kind === "ult_cat_frenzy" || kind === "ult_heli_crash" || kind === "ult_basketball_rain") {
-      caster.x = (caster.x + target.x) * 0.5;
-      caster.y = (caster.y + target.y) * 0.5;
-      const projVisual = kind === "ult_basketball_rain" ? "basketball" : kind === "ult_cat_frenzy" ? "claw_orb" : "heli_orb";
-      this.spawnProjectiles(caster, target, 7, Math.round(slot.baseDamage * 0.16), 500, caster.accent, 21, projVisual);
-      this.ringEffects.push({ x: target.x, y: target.y, r: 20, maxR: 260, color: caster.accent, alpha: 1 });
-      if (!headless) {
-        if (kind === "ult_cat_frenzy") {
-          caster.frenzyTimer = Math.max(caster.frenzyTimer || 0, 3.5);
-          this.spawnText("😾 哈——！！千爪破防！", target.x, target.y - 68, "#ffe600", 25);
-        } else if (kind === "ult_heli_crash") {
-          this.spawnText("🚁 孩子们！Mamba Out!", target.x, target.y - 68, "#ffe600", 25);
-        } else if (kind === "ult_basketball_rain") {
-          this.spawnSkillVfx({ kind: "feather_burst", x: target.x, y: target.y, toX: caster.x, toY: caster.y, color: "#ffffff", accent: "#ff2a54", life: 0.95, maxLife: 0.95 });
-          this.spawnText("🏀 鸡你太美·万凰陨石！", target.x, target.y - 68, "#00d4ff", 25);
-        }
+      for (let i = 0; i < ult.secondaryCount; i++) {
+        this.spawnSummon(caster, target, caster.ultimateSequenceState.secondaryDamage, slot.name, 0, caster.ultimateSequenceState);
+        const summon = this.summons[this.summons.length - 1];
+        summon.x -= (i + 1) * summon.vx * 0.12;
+        summon.y -= (i + 1) * summon.vy * 0.12;
       }
+      if (kind === "ult_cat_frenzy") {
+        caster.frenzyTimer = Math.max(caster.frenzyTimer || 0, 3.5);
+        if (!headless) this.spawnText("😾 哈——！！千爪破防！", target.x, target.y - 68, "#ffe600", 25);
+      }
+      if (!headless && kind === "ult_heli_crash") this.spawnText("🚁 孩子们！Mamba Out!", target.x, target.y - 68, "#ffe600", 25);
+      if (!headless && kind === "ult_basketball_rain") this.spawnText("🏀 鸡你太美·万凰陨石！", target.x, target.y - 68, "#00d4ff", 25);
     } else if (kind === "pk_col_2") {
-      this.growFighter(caster, 0.25, 0, headless, "蒙多巨大化");
-      this.applyHeal(caster, 220, "蒙多狂暴回血", headless);
+      this.growFighter(caster, 0.25, 0, headless, "蒙多巨大化"); this.applyHeal(caster, 220, "蒙多狂暴回血", headless);
     } else if (kind === "pk_mag_2") {
-      this.spawnProjectiles(caster, target, 12, Math.round(slot.baseDamage * 0.12), 540, caster.accent, 14);
+      this.spawnProjectiles(caster, target, ult.mageSecondaryCount, target.maxHp * ult.secondaryDamageRatio, 540, caster.accent, 14, "default", true);
     } else if (kind === "pk_sifu_5") {
-      this.timeStopTimer = 2.0;
-      this.timeStopOwner = caster;
-      caster.activeSlots.forEach((activeSlot) => { activeSlot.cdLeft = Math.min(activeSlot.cdLeft, 0.4); });
-    } else if (kind === "pk_ur1" || kind === "pk_mag_5") {
-      this.spinArenaTimer = 3.0;
+      this.timeStopTimer = 2.0; this.timeStopOwner = caster; caster.activeSlots.forEach((activeSlot) => { if (!activeSlot.isUlt) activeSlot.cdLeft = Math.min(activeSlot.cdLeft, 0.4); });
+    }
+  }
+
+  syncUltimateControls() {
+    if (this.headless || typeof document === "undefined") return;
+    const p = this.pendingUltimate;
+    const visible = !!(p && p.phase === "arena" && p.target.isPlayer && !p.responseUsed && this.ultimateDodgeWindow > 0 && !this.paused);
+    document.getElementById("ultimate-response")?.classList.toggle("hidden", !visible);
+    for (const id of ["ultimate-dodge-btn", "ultimate-counter-btn", "ultimate-dodge-fallback", "ultimate-counter-fallback"]) {
+      const button = document.getElementById(id);
+      if (!button) continue;
+      button.classList.toggle("hidden", !visible);
+      button.disabled = !visible;
+    }
+    const hint = document.getElementById("ultimate-response-hint");
+    if (hint && visible) hint.textContent = p.remaining <= this.getCombatConfig().ultimate.counterWindow + 1e-9 ? "现在拆招 · F / 空格" : "现在回避 · D；拆招还需更晚";
+  }
+
+  canRespondUltimate() {
+    const p = this.pendingUltimate;
+    return !!(this.running && !this.paused && !this.finale && p?.phase === "arena" && p.target.isPlayer && p.target.hp > 0 && p.caster.hp > 0 && !p.responseUsed && this.ultimateDodgeWindow > 0);
+  }
+
+  acceptUltimateDodge(p, headless) {
+    p.dodged = p.responseUsed = true;
+    p.target.isDodging = true;
+    p.target.dodgeTimer = this.getCombatConfig().ultimate.dodgeInvulnerability;
+    this.startEvadeMotion(p.target, p.caster);
+    this.addUltimateEnergy(p.target, this.getCombatConfig().ultimate.gainOnPerfectDodge);
+    window.BattleEffects.onDodge(this, p.target, p.caster, headless);
+    if (!headless) {
+      window.memeAudio.playSifuDodge();
+      this.spawnText("PERFECT EVASION!!", p.target.x, p.target.y - p.target.radius - 40, "#00ff88", 25);
     }
   }
 
   triggerUltimateDodge() {
-    if (!this.running || this.paused || !this.pendingUltimate || this.pendingUltimate.dodged || this.ultimateDodgeWindow <= 0) return false;
-    const pending = this.pendingUltimate;
-    if (!pending.target.isPlayer) return false;
-    pending.dodged = true;
-    this.spawnText("⚡ 最后一瞬闪避成功!!", pending.target.x, pending.target.y - pending.target.radius - 40, "#00ff88", 25);
-    if (typeof document !== "undefined") {
-      const dodge = document.getElementById("ultimate-dodge-btn");
-      if (dodge) dodge.classList.add("hidden");
-    }
+    if (!this.canRespondUltimate()) return false;
+    this.acceptUltimateDodge(this.pendingUltimate, this.headless);
+    this.syncUltimateControls();
     return true;
+  }
+
+  triggerUltimateCounter() {
+    if (!this.canRespondUltimate()) return false;
+    const p = this.pendingUltimate;
+    p.responseUsed = true;
+    p.countered = p.remaining <= this.getCombatConfig().ultimate.counterWindow + 1e-9;
+    if (!p.countered && !this.headless) this.spawnText("拆招过早", p.target.x, p.target.y - 60, "#ff2a54", 22);
+    this.syncUltimateControls();
+    return p.countered;
   }
 
   // 构建参战实体
@@ -562,40 +855,17 @@ class BattleEngine {
       shout: normalSkill.shout,
       skillId: normalSkill.id,
       effectKind: normalSkill.effectKind,
+      animationType: normalSkill.animationType,
       sourceType: "heroSkill"
     });
 
     if (ultSkill.type === "active") {
-      activeSlots.push({
-        slotId: "ult_active",
-        name: ultSkill.name,
-        isUlt: true,
-        level: ultLv,
-        cooldown: ultSkill.cooldown,
-        cdLeft: 3.5 + this.random(),
-        baseDamage: ultSkill.baseDamage,
-        shout: ultSkill.shout,
-        effectKind: ultSkill.effectKind,
-        sourceType: "heroUlt"
-      });
+      activeSlots.push({ slotId: "ult_active", name: ultSkill.name, isUlt: true, level: ultLv, cooldown: 0, cdLeft: 0, shout: ultSkill.shout, effectKind: ultSkill.effectKind, animationType: ultSkill.animationType, sourceType: "heroUlt" });
     }
 
     pickedPerks.forEach((pk, idx) => {
       if (pk.type === "active") {
-        activeSlots.push({
-          slotId: `perk_active_${idx}`,
-          perkId: pk.id,
-          name: pk.name,
-          isUlt: pk.rarity === "UR",
-          level: 1, // 词条升级只加局外刷出率，局内数值恒定以保平衡
-          cooldown: pk.cooldown || 4.5,
-          cdLeft: 1.4 + idx * 0.7,
-          baseDamage: pk.baseDamage || 90,
-          heal: pk.heal || 0,
-          shout: pk.shout,
-          effectKind: pk.id,
-        sourceType: "perk"
-        });
+        activeSlots.push({ slotId: `perk_active_${idx}`, perkId: pk.id, name: pk.name, isUlt: pk.ultimate === true, level: 1, cooldown: pk.ultimate ? 0 : (pk.cooldown || 4.5), cdLeft: pk.ultimate ? 0 : 1.4 + idx * 0.7, baseDamage: pk.baseDamage || 90, heal: pk.heal || 0, shout: pk.shout, effectKind: pk.id, animationType: pk.animationType, sourceType: "perk" });
       }
     });
 
@@ -618,18 +888,20 @@ class BattleEngine {
       vx: Math.cos(angle) * baseSpd,
       vy: Math.sin(angle) * baseSpd,
       baseSpd,
-      radius: 32,
-      maxHp: 2200,
-      hp: 2200,
-      maxShield: 900,
+      radius: this.getCombatConfig().fighter.baseRadius,
+      maxHp: this.getCombatConfig().fighter.defaultMaxHp,
+      hp: this.getCombatConfig().fighter.defaultMaxHp,
+      maxShield: this.getCombatConfig().fighter.maxShield,
       shield: 0,
       corePassives: heroCfg.corePassives,
       ultSkill,
       ultLv,
       perks: pickedPerks,
       buildTags: [...new Set(pickedPerks.map((perk) => perk.archetype).filter(Boolean))],
-      activeSlots, // 1 ~ 5 个主动按钮
-      passiveTimer: 0,
+      activeSlots,
+      ultimateEnergy: this.getCombatConfig().ultimate.initialEnergy,
+      ultimateSequence: 0,
+      ultimateSequenceState: null,
       growthTimer: 0,
       regenTimer: 0,
       ageTimer: 0,
@@ -653,13 +925,23 @@ class BattleEngine {
       immortalTimer: 0,
       hitCounter: 0,
       castCount: 0,
+      morphState: null,
+      morphScale: { current: 1, target: 1, speed: 8 },
+      phantomTimer: 0,
+      phantomColor: heroCfg.accent,
+      phantomClock: 0,
       scaleAnim: 1.0
     };
   }
 
   startMatch(p1HeroId, p1Perks, matchOptions = {}) {
     this.stop();
-    this.mode = this.options.mode || this.store.state.matchMode || "quick";
+    const recording = this.scenario?.recording ? this.scenario : null;
+    this.mode = recording ? "classic" : this.options.mode || this.store.state.matchMode || "quick";
+    if (recording) {
+      p1HeroId = recording.p1HeroId;
+      p1Perks = [];
+    }
     const rules = window.GAME_CONFIG.modes[this.mode];
     this.maxMatchDuration = rules.duration;
     this.elapsed = 0;
@@ -667,10 +949,10 @@ class BattleEngine {
     this.state = "battle";
     const store = this.store;
     const allHeroIds = Object.keys(window.MEME_DATA.heroes);
-    const p2HeroId = matchOptions.p2HeroId || allHeroIds[Math.floor(this.random() * allHeroIds.length)];
+    const p2HeroId = recording ? recording.p2HeroId : matchOptions.p2HeroId || allHeroIds[Math.floor(this.random() * allHeroIds.length)];
 
     // AI 随机抽3个词条
-    const p2Perks = matchOptions.p2Perks || window.GameRandom.shuffle(window.MEME_DATA.perks, this.random).slice(0, 3);
+    const p2Perks = recording ? [] : matchOptions.p2Perks || window.GameRandom.shuffle(window.MEME_DATA.perks, this.random).slice(0, 3);
 
     // 计算玩家当前角色的技能平均等级，给 AI 镜像匹配相近强度，使双方技能等级相近，实际表现由模拟器检测
     const eqN = store.state.equippedNormal[p1HeroId];
@@ -686,15 +968,15 @@ class BattleEngine {
     this.p1.hp = this.p1.maxHp;
     this.p2.maxHp = Math.round(rules.initialHp * hpScale * (this.hasPerk(this.p2, "pk_asn_3") ? 0.85 : 1));
     this.p2.hp = this.p2.maxHp;
-    this.p1.maxShield = Math.round(900 * hpScale);
-    this.p2.maxShield = Math.round(900 * hpScale);
+    this.p1.maxShield = Math.round(this.getCombatConfig().fighter.maxShield * hpScale);
+    this.p2.maxShield = Math.round(this.getCombatConfig().fighter.maxShield * hpScale);
     this.p1.shield = 0;
     this.p2.shield = 0;
 
     this.projectiles = [];
     this.floatingTexts = [];
     this.ringEffects = [];
-    this.truckHazards = [];
+    this.summons = [];
     this.trails = [];
     this.particleBursts = [];
     this.ultImpactEffects = [];
@@ -713,6 +995,16 @@ class BattleEngine {
     this.running = true;
     this.paused = false;
     this.hudTags.clear();
+    if (this.scenario) {
+      this.scenario.cursor = 0;
+      this.scenario.started = true;
+      this.scenario.finished = false;
+      this.scenario.caption = null;
+      this.scenario.chapter = "";
+      this.scenario.hpFloors = { p1: 0, p2: 0 };
+      this.setSpeed(recording ? 1 : this.scenario.initialSpeed);
+      if (!this.headless) this.onScenarioChange?.();
+    }
 
     if (!this.headless) {
       document.getElementById("draft-overlay")?.classList.add("hidden");
@@ -725,6 +1017,7 @@ class BattleEngine {
       const generation = this.generation;
       this.frameId = requestAnimationFrame((t) => this.loop(t, generation));
     }
+    this.updateScenario(this.headless);
   }
 
   loop(now, generation = this.generation) {
@@ -744,8 +1037,8 @@ class BattleEngine {
       this.accumulator += rawDt * this.playbackSpeed;
       const step = window.GAME_CONFIG.fixedStep;
       while (this.accumulator >= step && this.running && !this.paused && !this.finale) {
-        this.update(step, false);
         this.accumulator -= step;
+        this.update(step, false);
       }
     }
     this.draw();
@@ -758,10 +1051,21 @@ class BattleEngine {
   // 核心每帧更新（支持最多300秒长局与前/中/后期构筑演进）
   update(dt, headless = this.headless) {
     if (!this.running || this.paused || this.finale) return;
+    if (this.pendingUltimate) {
+      const advanced = this.updateUltimateCutin(dt, headless);
+      this.elapsed += advanced;
+      this.matchTimeLeft = Math.max(0, this.maxMatchDuration - this.elapsed);
+      if (!headless) { this.updateParticles(advanced); this.updateTopHudUI(); }
+      this.checkFinished();
+      return;
+    }
     this.elapsed += dt;
     this.matchTimeLeft = Math.max(0, this.maxMatchDuration - this.elapsed);
     if (this.checkFinished()) return;
     this.updatePhase(headless);
+    this.updateScenario(headless);
+    if (!this.running || this.paused || this.finale) return;
+    this.dodgeFlashTimer = Math.max(0, this.dodgeFlashTimer - dt);
     if (this.hitstopTimer > 0) {
       this.hitstopTimer -= dt;
       if (!headless) this.updateTopHudUI();
@@ -773,11 +1077,6 @@ class BattleEngine {
     if (this.arenaPulse > 0) this.arenaPulse -= dt;
     if (this.announcerTimer > 0) this.announcerTimer -= dt;
 
-    if (this.pendingUltimate) {
-      this.updateUltimateCutin(dt, headless);
-      if (!headless) this.updateTopHudUI();
-      if (this.checkFinished() || this.pendingUltimate) return;
-    }
 
     if (!headless) {
       const dist = Math.hypot(this.p1.x - this.p2.x, this.p1.y - this.p2.y);
@@ -809,7 +1108,8 @@ class BattleEngine {
     if (this.pendingUltimate || this.checkFinished()) return;
     this.handleFighterCollision(headless);
     this.updateProjectiles(dt, headless);
-    this.updateHazards(dt, headless);
+    this.updateSummons(dt, headless);
+    this.updateClones(dt, headless);
     if (this.currentPhase === "overtime") {
       // 最后一阶段抑制无限续航，双方按最大血量承受相同持续压力。
       for (const fighter of [this.p1, this.p2]) fighter.hp = Math.max(0, fighter.hp - fighter.maxHp * 0.02 * dt);
@@ -833,19 +1133,16 @@ class BattleEngine {
     const isFrozen = (this.timeStopTimer > 0 && this.timeStopOwner !== f) || f.stunTimer > 0;
     if (isFrozen) return;
     f.scaleAnim += (1.0 - f.scaleAnim) * 10 * dt;
+    const motionOwnsPosition = this.updateMorph(f, enemy, dt, headless);
     this.updateBuilds(f, enemy, dt, headless);
 
-    // 被动大招定时触发
-    if (f.ultSkill && f.ultSkill.type === "passive") {
-      f.passiveTimer += dt;
-      if (f.passiveTimer >= 3.5) {
-        f.passiveTimer = 0;
-        this.triggerPassiveUlt(f, enemy, headless);
-      }
+    // 被动究极与主动槽共用满能量触发门槛。
+    if (f.ultSkill && f.ultSkill.type === "passive" && f.ultimateEnergy >= this.getCombatConfig().ultimate.maxEnergy) {
+      this.triggerPassiveUlt(f, enemy, headless);
     }
 
     // 时停冻结判定
-    if (!isFrozen) {
+    if (!motionOwnsPosition) {
       // 滚筒洗衣机向心旋转力
       if (this.spinArenaTimer > 0) {
         const cx = this.arena.x + this.arena.w / 2;
@@ -854,7 +1151,7 @@ class BattleEngine {
         f.vy += (cy - f.y) * 2.8 * dt;
       }
 
-      const spdMult = (f.wallBoostTimer > 0 ? 1.25 : 1.0) * (f.hp / f.maxHp < 0.4 ? 1.15 : 1.0) * (f.slowTimer > 0 ? 0.65 : 1);
+      const spdMult = (f.wallBoostTimer > 0 ? 1.25 : 1.0) * (f.hp / f.maxHp < 0.4 ? 1.15 : 1.0) * (f.slowTimer > 0 ? 0.65 : 1) * (f.morphState?.type === "evade" ? 2 : 1);
       f.x += f.vx * spdMult * dt * window.GAME_CONFIG.speed.movement;
       f.y += f.vy * spdMult * dt * window.GAME_CONFIG.speed.movement;
 
@@ -896,24 +1193,22 @@ class BattleEngine {
     }
 
     // 主动技能冷却、法术急速与自动施放
-    const autoEnabled = f.isPlayer ? (this.options.autoBattle ?? this.store.state.autoBattle) : true;
+    const autoEnabled = this.isRecordingActive() || (f.isPlayer ? (this.options.autoBattle ?? this.store.state.autoBattle) : true);
     f.activeSlots.forEach((slot, idx) => {
       const ageHaste = this.hasPerk(f, "pk_sifu_3") ? 1 + (72 - f.age) * 0.003 : 1;
       const haste = (this.hasPerk(f, "pk_mag_1") ? 1.65 : 1.0) * ageHaste * (f.frenzyTimer > 0 ? 1.25 : 1);
       const behindBoost = f.hp < enemy.hp * 0.78 ? 1.22 : 1.0;
-      slot.cdLeft = Math.max(0, slot.cdLeft - dt * behindBoost * haste);
-
-      if (slot.cdLeft <= 0 && autoEnabled && !isFrozen) {
-        if (this.random() < 1 - Math.exp(-5 * dt)) {
-          this.castActiveSlot(f, enemy, idx, false, headless);
-        }
+      if (!slot.isUlt) slot.cdLeft = Math.max(0, slot.cdLeft - dt * behindBoost * haste);
+      if ((slot.isUlt ? f.ultimateEnergy >= this.getCombatConfig().ultimate.maxEnergy : slot.cdLeft <= 0) && autoEnabled && !isFrozen) {
+        if (this.random() < 1 - Math.exp(-5 * dt)) this.castActiveSlot(f, enemy, idx, false, headless);
       }
     });
     if (f.ultSkill.id === "kg_u2" && !isFrozen) {
       f.orbitTimer += dt;
       if (f.orbitTimer >= 0.5 && Math.hypot(f.x - enemy.x, f.y - enemy.y) < f.radius + enemy.radius + 36) {
         f.orbitTimer = 0;
-        this.applyDamage(f, enemy, f.ultSkill.baseDamage * 0.3, "护体篮球", false, headless);
+        const growth = 1 + (f.ultLv - 1) * this.getCombatConfig().passiveSkillDamageGrowth;
+        this.applyDamage(f, enemy, this.getCombatConfig().passiveOrbitDamage * growth, "护体篮球", false, headless);
       }
     }
   }
@@ -943,9 +1238,9 @@ class BattleEngine {
       b.vx = nx * bounceSpd + (this.random() - 0.5) * 90;
       b.vy = ny * bounceSpd + (this.random() - 0.5) * 90;
 
-      // 双方互相造成碰撞伤害 + 各自核心被动
-      const dmgAtoB = (42 + (a.heroId === "dayun" && a.nextWallHit ? 55 : 0) + (a.heroId === "laoda" ? 70 : 0)) * Math.max(1, a.radius / 32);
-      const dmgBtoA = (42 + (b.heroId === "dayun" && b.nextWallHit ? 55 : 0) + (b.heroId === "laoda" ? 70 : 0)) * Math.max(1, b.radius / 32);
+      const collision = this.getCombatConfig().collision;
+      const dmgAtoB = (collision.baseDamage + (a.heroId === "dayun" && a.nextWallHit ? collision.dayunWallHit : 0) + (a.heroId === "laoda" ? collision.laodaElbow : 0)) * Math.max(1, a.radius / this.getCombatConfig().fighter.baseRadius);
+      const dmgBtoA = (collision.baseDamage + (b.heroId === "dayun" && b.nextWallHit ? collision.dayunWallHit : 0) + (b.heroId === "laoda" ? collision.laodaElbow : 0)) * Math.max(1, b.radius / this.getCombatConfig().fighter.baseRadius);
       for (const fighter of [a, b]) {
         if (fighter.heroId === "dayun" && fighter.nextWallHit) this.growFighter(fighter, 0.02, 0, headless, "百吨惯性");
         fighter.nextWallHit = false;
@@ -978,9 +1273,10 @@ class BattleEngine {
         }
       });
 
-      // 架势条被碰撞削减，用于师父流破防反馈
-      a.stance = Math.max(0, a.stance - 10);
-      b.stance = Math.max(0, b.stance - 10);
+      a.stance = Math.max(0, a.stance - collision.stanceLoss);
+      b.stance = Math.max(0, b.stance - collision.stanceLoss);
+      this.addUltimateEnergy(a, this.getCombatConfig().ultimate.gainOnCollision);
+      this.addUltimateEnergy(b, this.getCombatConfig().ultimate.gainOnCollision);
 
       this.hitstopTimer = 0.035;
       if (!headless) {
@@ -994,22 +1290,18 @@ class BattleEngine {
   castActiveSlot(caster, target, slotIndex, isManual = false, headless = this.headless, isRepeat = false) {
     if (!caster || !target || !this.canAct(caster) || target.hp <= 0) return false;
     const originalSlot = caster.activeSlots[slotIndex];
-    if (!originalSlot || (!isRepeat && originalSlot.cdLeft > 0)) return false;
+    if (!originalSlot) return false;
+    if (originalSlot.isUlt) return this.startUltimateCutin(caster, target, { ...originalSlot, isRepeat });
+    if (!isRepeat && originalSlot.cdLeft > 0) return false;
     const slot = { ...originalSlot, isRepeat };
     if (!isRepeat) {
       originalSlot.cdLeft = slot.cooldown;
       caster.castCount++;
+      this.addUltimateEnergy(caster, this.getCombatConfig().ultimate.gainOnCast);
     }
     caster.scaleAnim = 1.38;
 
-    // UR大招先进入全屏Cut-in前摇，最后0.75秒开放极限闪避
-    if (slot.isUlt) {
-      this.startUltimateCutin(caster, target, slot);
-      return true;
-    }
-
     // 技能等级加成（角色技能升级：伤害与特效规模成长）
-    const lvMult = 1 + (slot.level - 1) * 0.28;
 
     // 贴脸时机判定：玩家手动点击时，若两球距离 < 210px，触发完美命中
     const dist = Math.hypot(caster.x - target.x, caster.y - target.y);
@@ -1022,6 +1314,7 @@ class BattleEngine {
       }
     }
 
+    const lvMult = 1 + (slot.level - 1) * this.getCombatConfig().skillDamageGrowth;
     const rawDmg = Math.round((slot.baseDamage ?? 95) * lvMult * timingBonus);
     if (!isRepeat) window.BattleEffects.onCast(this, caster, target, slot, headless);
 
@@ -1043,6 +1336,7 @@ class BattleEngine {
       this.spawnText(slot.shout || slot.name, caster.x, caster.y - 36, slot.isUlt ? "#ffe600" : "#00f0ff", slot.isUlt ? 26 : 20);
       this.triggerShake(slot.isUlt ? 16 : 9, slot.isUlt ? 0.28 : 0.15);
     }
+    if (this.startSkillMotion(caster, target, slot, rawDmg, headless)) return true;
 
     // 按技能特效类型执行
     const kind = slot.effectKind;
@@ -1055,12 +1349,6 @@ class BattleEngine {
     if (kind === "pk_mag_5") {
       this.spinArenaTimer = 3;
       this.spawnProjectiles(caster, target, 6, Math.round(rawDmg / 3), 450, caster.accent, 13);
-      return true;
-    }
-    if (kind === "pk_asn_2") {
-      caster.x = Math.max(this.arena.x + caster.radius, Math.min(this.arena.x + this.arena.w - caster.radius, target.x - target.radius - caster.radius));
-      caster.y = target.y;
-      this.applyDamage(caster, target, rawDmg + (target.hp < target.maxHp * 0.35 ? 120 : 0), slot.name, true, headless);
       return true;
     }
     if (kind === "pk_sifu_2") {
@@ -1158,35 +1446,32 @@ class BattleEngine {
     return true;
   }
 
-  // 触发被动型究极技（无需按键，自动周期爆发）
+  // 触发被动型究极技（共享能量满后一次爆发）
   triggerPassiveUlt(caster, target, headless) {
-    const lvMult = 1 + (caster.ultLv - 1) * 0.25;
-    const dmg = Math.round(caster.ultSkill.baseDamage * lvMult);
+    const ult = this.getCombatConfig().ultimate;
+    if (!this.canAct(caster) || target.hp <= 0 || caster.ultSkill.type !== "passive" || caster.ultimateEnergy < ult.maxEnergy) return false;
+    this.beginUltimateSequence(caster, target);
+    this.applyDamage(caster, target, target.maxHp * this.ultimateRatio("passive", caster.ultLv), caster.ultSkill.name, false, headless, { ultimateCore: true });
     if (!headless) {
       this.ringEffects.push({ x: caster.x, y: caster.y, r: 25, maxR: 185, color: "#ffe600", alpha: 1 });
       this.spawnText(`⚡${caster.ultSkill.name}`, caster.x, caster.y - 45, "#ffe600", 20);
       window.memeAudio.playSkillSFX(caster.heroId, false, caster.ultSkill.shout || caster.ultSkill.name);
-      if (caster.ultSkill.id === "hj_u2") {
-        this.spawnSkillVfx({ kind: "laser_pointer", x: caster.x, y: caster.y, toX: target.x, toY: target.y, color: "#ff2a54", accent: "#00f0ff", life: 0.65, maxLife: 0.65 });
-      } else if (caster.ultSkill.id === "ld_u2") {
-        this.spawnSkillVfx({ kind: "mamba_elbow", x: caster.x, y: caster.y, toX: target.x, toY: target.y, color: "#b829ff", accent: "#ffe600", life: 0.5, maxLife: 0.5 });
-      }
+      if (caster.ultSkill.id === "hj_u2") this.spawnSkillVfx({ kind: "laser_pointer", x: caster.x, y: caster.y, toX: target.x, toY: target.y, color: "#ff2a54", accent: "#00f0ff", life: 0.65, maxLife: 0.65 });
+      if (caster.ultSkill.id === "ld_u2") this.spawnSkillVfx({ kind: "mamba_elbow", x: caster.x, y: caster.y, toX: target.x, toY: target.y, color: "#b829ff", accent: "#ffe600", life: 0.5, maxLife: 0.5 });
     }
-    if (caster.ultSkill.id === "dy_u2") {
-      this.applyHeal(caster, 90, "泥头装甲+90", headless);
-      this.growFighter(caster, 0.04, 0, headless, "不死泥头装甲");
+    if (caster.ultSkill.id === "dy_u2") { this.applyHeal(caster, 90, "泥头装甲+90", headless); this.growFighter(caster, 0.04, 0, headless, "不死泥头装甲"); }
+    if (caster.ultSkill.id === "kg_u2") {
+      this.spawnProjectiles(caster, target, ult.passiveSecondaryCount, target.maxHp * ult.secondaryDamageRatio, 450, "#ffe600", 16, "basketball", true);
+    } else {
+      this.spawnProjectiles(caster, target, ult.passiveSecondaryCount, target.maxHp * ult.secondaryDamageRatio, 450, "#ffe600", 16, caster.heroId === "laoda" ? "basketball" : "default", true);
     }
-    if (caster.ultSkill.id === "kg_u2") return;
-    this.spawnProjectiles(caster, target, 2, Math.round(dmg * 0.65), 450, "#ffe600", 16, caster.heroId === "laoda" ? "basketball" : "default");
+    return true;
   }
 
   // 玩家点击屏幕中央【⚡抓时机！极限弹反】按钮
   triggerManualQTE() {
     if (!this.running || this.paused) return false;
-    if (this.pendingUltimate) {
-      this.triggerUltimateDodge();
-      return;
-    }
+    if (this.pendingUltimate) return this.triggerUltimateCounter();
     if (this.qteTimer <= 0) return;
     if (!this.canAct(this.p1)) return false;
     this.qteTimer = 0;
@@ -1203,6 +1488,7 @@ class BattleEngine {
 
     this.applyHeal(this.p1, 95, "完美防反+95", false);
     this.applyDamage(this.p1, this.p2, 145, "💥极限反震!!", true, false);
+    this.addUltimateEnergy(this.p1, this.getCombatConfig().ultimate.gainOnPerfectDodge);
     window.BattleEffects.onDodge(this, this.p1, this.p2, false);
     return true;
   }
@@ -1213,31 +1499,19 @@ class BattleEngine {
     if (this.skillVfxList.length > 24) this.skillVfxList.shift();
   }
 
-  spawnProjectiles(caster, target, count, dmg, speed, color, radius, visualKind = "default") {
+  spawnProjectiles(caster, target, count, dmg, speed, color, radius, visualKind = "default", ultimateSecondary = false) {
     const baseAngle = Math.atan2(target.y - caster.y, target.x - caster.x);
     for (let i = 0; i < count; i++) {
-      // 带随机散射角，使得远距离自动乱放可能空技能，而贴脸手操必中！
       const spread = (i - (count - 1) / 2) * 0.24 + (this.random() - 0.5) * 0.16;
       const ang = baseAngle + spread;
-      this.projectiles.push({
-        owner: caster,
-        x: caster.x,
-        y: caster.y,
-        vx: Math.cos(ang) * speed,
-        vy: Math.sin(ang) * speed,
-        r: radius,
-        dmg,
-        color,
-        visualKind,
-        bouncesLeft: 1,
-        life: 2.2
-      });
+      this.projectiles.push({ owner: caster, x: caster.x, y: caster.y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, r: radius, dmg: ultimateSecondary ? caster.ultimateSequenceState.secondaryDamage : dmg, color, visualKind, ultimateSecondary, ultimateSequence: ultimateSecondary ? caster.ultimateSequenceState : null, bouncesLeft: 1, life: 2.2 });
     }
   }
 
   updateProjectiles(dt, headless) {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
+      const oldX = p.x, oldY = p.y;
       p.life -= dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
@@ -1249,10 +1523,24 @@ class BattleEngine {
       if (p.y < this.arena.y || p.y > this.arena.y + this.arena.h) {
         if (p.bouncesLeft > 0) { p.vy *= -1; p.bouncesLeft--; } else p.life = 0;
       }
+      if (p.life <= 0) {
+        this.projectiles.splice(i, 1);
+        continue;
+      }
 
+      for (let c = this.clones.length - 1; c >= 0; c--) {
+        const clone = this.clones[c];
+        if (clone.owner !== p.owner && this.segmentHits(oldX, oldY, p.x, p.y, clone, p.r)) {
+          this.motionBurst({ ...clone, accent: clone.owner.accent }, headless);
+          this.clones.splice(c, 1);
+          p.life = 0;
+          break;
+        }
+      }
+      if (p.life <= 0) { this.projectiles.splice(i, 1); continue; }
       const target = p.owner.isPlayer ? this.p2 : this.p1;
       if (Math.hypot(p.x - target.x, p.y - target.y) < p.r + target.radius) {
-        const damage = this.applyDamage(p.owner, target, p.dmg, "弹幕命中!", false, headless);
+        const damage = this.applyDamage(p.owner, target, p.dmg, "弹幕命中!", false, headless, { ultimateSecondary: p.ultimateSecondary, ultimateSequence: p.ultimateSequence });
         if (damage > 0 && p.slow) target.slowTimer = p.slow;
         p.life = 0;
       }
@@ -1261,25 +1549,224 @@ class BattleEngine {
     }
   }
 
-  updateHazards(dt, headless) {
-    for (let i = this.truckHazards.length - 1; i >= 0; i--) {
-      const t = this.truckHazards[i];
-      t.x += t.vx * dt;
-      const target = t.owner.isPlayer ? this.p2 : this.p1;
-      if (!t.hitDone && Math.abs(t.x - target.x) < t.w * 0.65 && Math.abs(t.y - target.y) < t.h * 0.85) {
-        t.hitDone = true;
-        this.applyDamage(t.owner, target, t.dmg, "🚛百吨碾压!!", true, headless);
+  segmentHits(x1, y1, x2, y2, target, radius) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const t = Math.max(0, Math.min(1, ((target.x - x1) * dx + (target.y - y1) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(x1 + dx * t - target.x, y1 + dy * t - target.y) <= radius + target.radius;
+  }
+
+  clampFighter(f) {
+    f.x = Math.max(this.arena.x + f.radius, Math.min(this.arena.x + this.arena.w - f.radius, f.x));
+    f.y = Math.max(this.arena.y + f.radius, Math.min(this.arena.y + this.arena.h - f.radius, f.y));
+  }
+
+  motionBurst(f, headless) {
+    if (headless) return;
+    const reduced = this.store.state.settings.effects === "reduced";
+    this.particleBursts.push({ x: f.x, y: f.y, color: f.accent || f.color, count: reduced ? 4 : 18, life: 0.4 });
+    this.ringEffects.push({ x: f.x, y: f.y, r: 12, maxR: 110, color: f.accent || f.color, alpha: 1 });
+  }
+
+  startEvadeMotion(f, attacker) {
+    f.morphScale.target = 0.65;
+    f.morphState = { type: "evade", elapsed: 0, duration: 0.55 };
+    f.phantomTimer = 0.55;
+    const angle = Math.atan2(f.y - attacker.y, f.x - attacker.x);
+    f.vx = Math.cos(angle) * f.baseSpd;
+    f.vy = Math.sin(angle) * f.baseSpd;
+  }
+
+  startSkillMotion(f, target, slot, damage, headless) {
+    const type = slot.animationType;
+    if (!type) return false;
+    const angle = Math.atan2(target.y - f.y, target.x - f.x);
+    if (type === "scale") {
+      f.morphScale.target = 1.65;
+      f.morphState = { type, elapsed: 0, duration: 0.65 };
+      this.motionBurst(f, headless);
+      return false;
+    }
+    if (type === "dash_trail") {
+      f.phantomTimer = 0.5;
+      f.vx = Math.cos(angle) * 760;
+      f.vy = Math.sin(angle) * 760;
+      f.morphState = { type, elapsed: 0, duration: 0.5, target, damage, label: slot.name, hit: false };
+      return true;
+    }
+    if (type === "teleport") {
+      f.morphState = { type, elapsed: 0, duration: 0.12, target, damage, label: slot.name, execute: slot.effectKind === "pk_asn_2" };
+      f.phantomTimer = 0.4;
+      this.motionBurst(f, headless);
+      return true;
+    }
+    if (type === "blitz") {
+      const left = this.arena.x + f.radius, right = this.arena.x + this.arena.w - f.radius;
+      const first = f.x < target.x ? right : left;
+      f.morphState = { type, elapsed: 0, duration: 0.4, target, damage, label: slot.name, leg: 0,
+        blitzPath: [{ x: f.x, y: f.y }, { x: first, y: target.y }, { x: first === left ? right : left, y: target.y }, { x: first, y: target.y }], hits: [false, false, false] };
+      f.phantomTimer = 0.5;
+      return true;
+    }
+    if (type === "clones") {
+      this.clones = [];
+      for (const side of [-1, 1]) {
+        const heading = angle + side * 25 * Math.PI / 180;
+        this.clones.push({ owner: f, target, x: f.x, y: f.y, vx: Math.cos(heading) * 800, vy: Math.sin(heading) * 800, radius: f.radius, life: 0.8, elapsed: 0, damage: damage / 3, label: slot.name });
       }
-      if (t.x > this.width + 150) this.truckHazards.splice(i, 1);
+      this.spawnProjectiles(f, target, 1, damage / 3, 560, f.accent, 16, "basketball");
+      return true;
+    }
+    if (type === "summon") {
+      this.spawnSummon(f, target, damage, slot.name, slot.skillId === "hj_s2" ? 2 : 0);
+      return true;
+    }
+    return false;
+  }
+
+  spawnSummon(owner, target, damage, label, slow = 0, sequence = null) {
+    const angle = Math.atan2(target.y - owner.y, target.x - owner.x);
+    this.summons.push({ owner, kind: owner.heroId, x: owner.x, y: owner.y, vx: Math.cos(angle) * 650, vy: Math.sin(angle) * 650,
+      w: owner.heroId === "dayun" ? 110 : 64, h: 54, dmg: damage, label, slow, life: 2.4, hitDone: false,
+      ultimateSecondary: !!sequence, ultimateSequence: sequence });
+  }
+
+  updateMorph(f, enemy, dt, headless) {
+    const m = f.morphState;
+    let ownsPosition = false;
+    if (m) {
+      const previous = m.elapsed;
+      m.elapsed = Math.min(m.duration, m.elapsed + dt);
+      if (m.type === "teleport") {
+        ownsPosition = true;
+        if (m.elapsed >= m.duration) {
+          const direction = m.target.vx >= 0 ? -1 : 1;
+          f.x = m.target.x + direction * (m.target.radius + f.radius + 4);
+          f.y = m.target.y;
+          this.clampFighter(f);
+          if (m.target.hp > 0) this.applyDamage(f, m.target, m.damage + (m.execute && m.target.hp < m.target.maxHp * 0.35 ? 120 : 0), m.label, true, headless);
+          this.motionBurst(f, headless);
+          if (!headless) {
+            window.memeAudio.playCast("release");
+            this.spawnSkillVfx({ kind: "blink_cross", x: f.x, y: f.y, color: f.accent, life: 0.25, maxLife: 0.25 });
+          }
+        }
+      } else if (m.type === "blitz") {
+        ownsPosition = true;
+        const legDuration = m.duration / 3;
+        for (let leg = Math.min(2, Math.floor(previous / legDuration)); leg < 3; leg++) {
+          if (m.elapsed < leg * legDuration) break;
+          const a = m.blitzPath[leg], b = m.blitzPath[leg + 1];
+          const t = Math.min(1, (m.elapsed - leg * legDuration) / legDuration);
+          const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
+          if (!m.hits[leg] && this.segmentHits(f.x, f.y, x, y, m.target, f.radius)) {
+            m.hits[leg] = true;
+            this.applyDamage(f, m.target, m.damage / 3, m.label, false, headless, { secondary: true });
+            this.hitstopTimer = Math.max(this.hitstopTimer, 0.025);
+            this.motionBurst(m.target, headless);
+          }
+          f.x = x; f.y = y;
+          if (!headless) this.spawnSkillVfx({ kind: "blitz_line", x: a.x, y: a.y, toX: x, toY: y, color: f.accent, life: 0.18, maxLife: 0.18 });
+          if (t < 1) break;
+        }
+      } else if (m.type === "dash_trail") {
+        ownsPosition = true;
+        const x = f.x + f.vx * dt, y = f.y + f.vy * dt;
+        if (!m.hit && this.segmentHits(f.x, f.y, x, y, m.target, f.radius)) {
+          m.hit = true;
+          this.applyDamage(f, m.target, m.damage, m.label, false, headless);
+          this.motionBurst(m.target, headless);
+        }
+        f.x = x; f.y = y;
+        this.clampFighter(f);
+      }
+      if (m.elapsed >= m.duration) {
+        f.morphState = null;
+        f.morphScale.target = 1;
+        if (ownsPosition) {
+          const speed = Math.hypot(f.vx, f.vy) || 1;
+          f.vx = f.vx / speed * f.baseSpd; f.vy = f.vy / speed * f.baseSpd;
+        }
+      }
+    }
+    f.morphScale.current += (f.morphScale.target - f.morphScale.current) * (1 - Math.exp(-f.morphScale.speed * dt));
+    f.phantomTimer = Math.max(0, f.phantomTimer - dt);
+    if (!headless) {
+      for (let i = this.phantoms.length - 1; i >= 0; i--) if (this.phantoms[i].owner === f) {
+        this.phantoms[i].life -= dt;
+        if (this.phantoms[i].life <= 0) this.phantoms.splice(i, 1);
+      }
+      if (f.phantomTimer > 0) {
+        f.phantomClock += dt;
+        if (f.phantomClock >= 0.03) {
+          f.phantomClock %= 0.03;
+          const limit = this.store.state.settings.effects === "reduced" ? 3 : 6;
+          if (this.phantoms.length >= limit) this.phantoms.shift();
+          this.phantoms.push({ owner: f, x: f.x, y: f.y, radius: f.radius * f.morphScale.current, angle: m?.type === "evade" ? m.elapsed * 10 : 0, life: 0.18 });
+        }
+      }
+    }
+    return ownsPosition;
+  }
+
+  updateClones(dt, headless) {
+    for (let i = this.clones.length - 1; i >= 0; i--) {
+      const c = this.clones[i];
+      if (this.timeStopTimer > 0 && this.timeStopOwner !== c.owner) continue;
+      c.life -= dt; c.elapsed += dt;
+      if (c.elapsed > 0.12) {
+        const angle = Math.atan2(c.target.y - c.y, c.target.x - c.x);
+        c.vx = Math.cos(angle) * 800; c.vy = Math.sin(angle) * 800;
+      }
+      const x = c.x + c.vx * dt, y = c.y + c.vy * dt;
+      if (this.segmentHits(c.x, c.y, x, y, c.target, c.radius)) {
+        this.applyDamage(c.owner, c.target, c.damage, c.label, false, headless, { secondary: true });
+        c.life = 0;
+      }
+      c.x = x; c.y = y;
+      if (c.life <= 0 || c.owner.hp <= 0) {
+        this.motionBurst({ ...c, accent: c.owner.accent }, headless);
+        this.clones.splice(i, 1);
+      }
+    }
+  }
+
+  drawClones(ctx) {
+    for (const c of [...this.phantoms, ...this.clones]) {
+      ctx.save();
+      ctx.globalAlpha = c.life <= 0.18 ? c.life / 0.18 * 0.6 : 0.65;
+      ctx.translate(c.x, c.y); ctx.rotate(c.angle || 0);
+      ctx.shadowColor = c.owner.phantomColor; ctx.shadowBlur = 12;
+      const img = this.customImages[c.owner.heroId];
+      if (img) ctx.drawImage(img, -c.radius, -c.radius, c.radius * 2, c.radius * 2);
+      else { ctx.font = `${c.radius * 1.7}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(c.owner.emoji, 0, 0); }
+      ctx.restore();
+    }
+  }
+
+  updateSummons(dt, headless) {
+    for (let i = this.summons.length - 1; i >= 0; i--) {
+      const t = this.summons[i];
+      const target = t.owner.isPlayer ? this.p2 : this.p1;
+      const oldX = t.x, oldY = t.y;
+      t.x += t.vx * dt;
+      t.y += (t.vy || 0) * dt;
+      t.life = (t.life ?? 3) - dt;
+      if (!t.hitDone && target.hp > 0 && this.segmentHits(oldX, oldY, t.x, t.y, target, Math.max(t.w, t.h) / 2)) {
+        t.hitDone = true;
+        this.applyDamage(t.owner, target, t.dmg, t.label || "召唤突袭", false, headless, { ultimateSecondary: t.ultimateSecondary, ultimateSequence: t.ultimateSequence, secondary: true });
+        if (t.slow) target.slowTimer = t.slow;
+      }
+      if (t.life <= 0 || t.owner.hp <= 0 || t.x > this.width + 150 || t.x < -400) this.summons.splice(i, 1);
     }
   }
 
   // 伤害结算与流派机制：秒杀、吸血护盾、架势、前中后期成长
   applyDamage(attacker, defender, amount, label, forceCrit = false, headless = this.headless, options = {}) {
+    this.applyRecordingGuards();
     if (!this.running || this.paused || this.finale || attacker.hp <= 0 || defender.hp <= 0 || !Number.isFinite(amount) || amount <= 0) return 0;
     if (defender.isDodging && defender.dodgeTimer > 0) return 0;
     const ageDodge = this.hasPerk(defender, "pk_sifu_3") ? (72 - defender.age) * 0.001 : 0;
-    if (!options.secondary && this.random() < (this.hasPerk(defender, "pk_sifu_4") ? 0.25 : 0) + ageDodge) {
+    if (!options.responseResolved && !options.secondary && this.random() < (this.hasPerk(defender, "pk_sifu_4") ? 0.25 : 0) + ageDodge) {
       defender.isDodging = true;
       defender.dodgeTimer = 0.18;
       if (!headless) window.memeAudio.playSifuDodge();
@@ -1287,14 +1774,23 @@ class BattleEngine {
       window.BattleEffects.onDodge(this, defender, attacker, headless);
       return 0;
     }
-    let balanceMult = attacker.hp < defender.hp * 0.72 ? 1.24 : attacker.hp > defender.hp * 1.35 ? 0.86 : 1;
+    const ultimateCore = options.ultimateCore === true;
+    const ratioDamage = ultimateCore || options.ultimateSecondary === true;
+    const balanceMult = attacker.hp < defender.hp * 0.72 ? 1.24 : attacker.hp > defender.hp * 1.35 ? 0.86 : 1;
     const critChance = (attacker.heroId === "laoda" ? 0.43 : 0.18) + (this.hasPerk(attacker, "pk_asn_4") ? 0.3 : 0);
     const focused = this.timeStopTimer > 0 && this.timeStopOwner === attacker;
-    const isCrit = forceCrit || focused || this.random() < critChance;
+    const isCrit = ratioDamage ? false : (forceCrit || focused || this.random() < critChance);
     const critMult = this.hasPerk(attacker, "pk_asn_4") ? 2.1 : 1.45;
-    const phaseMult = { early: 1, mid: 1.1, late: 1.3, overtime: 1.7 }[this.currentPhase];
+    const phaseMult = this.getCombatConfig().phaseDamageMultiplier[this.currentPhase];
     const ageDamage = this.hasPerk(attacker, "pk_sifu_3") ? 1 + (attacker.age - 20) * 0.006 : 1;
-    let damage = Math.round(amount * balanceMult * (isCrit ? critMult : 1) * (0.9 + this.random() * 0.2) * (attacker.earlyBurst || 1) * ageDamage * phaseMult);
+    let damage = ratioDamage ? Math.round(amount) : Math.round(amount * balanceMult * (isCrit ? critMult : 1) * (0.9 + this.random() * 0.2) * (attacker.earlyBurst || 1) * ageDamage * phaseMult);
+    if (options.ultimateSecondary) {
+      const sequence = options.ultimateSequence;
+      if (!sequence || sequence.remaining <= 0) return 0;
+      damage = Math.min(damage, sequence.remaining);
+      sequence.remaining -= damage;
+      if (sequence === attacker.ultimateSequenceState) attacker.ultimateSecondaryBudget = sequence.remaining;
+    }
     if (this.hasPerk(defender, "pk_col_5")) damage = Math.round(damage * 0.8);
     const heavyHit = defender.heroId === "kunge" && damage > 120;
     if (heavyHit) damage = Math.round(damage * 0.65);
@@ -1303,8 +1799,8 @@ class BattleEngine {
     let hpDamage = damage - shieldDamage;
     const remainingHp = defender.hp - hpDamage;
     const lowHp = remainingHp > 0 && remainingHp <= defender.maxHp * 0.35;
-    const lottery = !options.secondary && this.hasPerk(attacker, "pk_asn_1") && this.random() < (lowHp ? 0.15 : 0.06);
-    const collector = this.hasPerk(attacker, "pk_asn_5") && remainingHp > 0 && remainingHp <= defender.maxHp * 0.12;
+    const lottery = !options.secondary && !ratioDamage && this.hasPerk(attacker, "pk_asn_1") && this.random() < (lowHp ? 0.15 : 0.06);
+    const collector = !ratioDamage && this.hasPerk(attacker, "pk_asn_5") && remainingHp > 0 && remainingHp <= defender.maxHp * 0.12;
     const executed = lottery || collector;
     if (executed) hpDamage = Math.max(hpDamage, defender.hp);
     const before = defender.hp;
@@ -1316,7 +1812,7 @@ class BattleEngine {
       this.applyHeal(defender, Math.round(defender.maxHp * 0.5), "拼夕夕免死回血", headless);
       if (!options.secondary) this.applyDamage(defender, attacker, 180, "免死反震", true, headless, { secondary: true });
     } else {
-      defender.hp = Math.max(defender.immortalTimer > 0 ? 1 : 0, before - hpDamage);
+      defender.hp = Math.max(this.recordingHpFloor(defender), defender.immortalTimer > 0 ? 1 : 0, before - hpDamage);
     }
     if (defender.hp / defender.maxHp <= 0.25 && before / defender.maxHp < attacker.hp / attacker.maxHp - 0.15) defender.lastDisadvantageAt = this.elapsed;
     if (defender.hp <= 0) this.lastLethalHit = {
@@ -1482,6 +1978,8 @@ class BattleEngine {
       ctx.stroke();
     }
 
+    this.drawDangerZones(ctx);
+    this.drawClones(ctx);
     // 角色残影拖尾
     this.trails.forEach((trail) => {
       ctx.save();
@@ -1635,7 +2133,22 @@ class BattleEngine {
       ctx.save();
       ctx.globalAlpha = alpha;
       const ang = Math.atan2((vfx.toY || vfx.y) - vfx.y, (vfx.toX || vfx.x + 1) - vfx.x);
-      if (vfx.kind === "highbeam_cone") {
+      if (vfx.kind === "climax_crater") {
+        ctx.strokeStyle = vfx.color; ctx.lineWidth = 6 * alpha;
+        ctx.beginPath(); ctx.ellipse(vfx.x, vfx.y, 90 + p * 65, 25 + p * 18, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.moveTo(vfx.x, vfx.y); ctx.lineTo(vfx.x + Math.cos(a) * 95, vfx.y + Math.sin(a) * 38); }
+        ctx.stroke();
+      } else if (vfx.kind === "blink_cross" || vfx.kind === "blitz_line") {
+        ctx.strokeStyle = vfx.color; ctx.lineWidth = 5 * alpha;
+        ctx.shadowColor = vfx.color; ctx.shadowBlur = 12;
+        ctx.beginPath();
+        if (vfx.kind === "blink_cross") {
+          ctx.moveTo(vfx.x - 65, vfx.y); ctx.lineTo(vfx.x + 65, vfx.y);
+          ctx.moveTo(vfx.x, vfx.y - 65); ctx.lineTo(vfx.x, vfx.y + 65);
+        } else { ctx.moveTo(vfx.x, vfx.y); ctx.lineTo(vfx.toX, vfx.toY); }
+        ctx.stroke();
+      } else if (vfx.kind === "highbeam_cone") {
         // 大运远光灯双道强光锥
         ctx.translate(vfx.x, vfx.y);
         ctx.rotate(ang);
@@ -1775,9 +2288,20 @@ class BattleEngine {
     });
 
     // 百吨王卡车冲撞特效（带真实车头贴图与双远光灯束）
-    this.truckHazards.forEach((t) => {
+    this.summons.forEach((t) => {
       ctx.save();
       ctx.translate(t.x, t.y);
+      if (t.kind && t.kind !== "dayun") {
+        ctx.strokeStyle = t.owner.accent; ctx.fillStyle = t.owner.accent;
+        ctx.shadowColor = t.owner.accent; ctx.shadowBlur = 12;
+        ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(0, 16, t.w / 2, 12, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.font = "42px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(t.kind === "laoda" ? "🚁" : t.kind === "hajimi" ? "🐈" : "🏀", 0, -4);
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillText(t.kind === "laoda" ? "悬浮护航" : t.kind === "hajimi" ? "猫猫护卫" : "防守中锋", 0, 36);
+        ctx.restore();
+        return;
+      }
       // 车尾烈焰拖尾与车前远光灯锥
       const beam = ctx.createLinearGradient(t.w / 2, 0, t.w / 2 + 130, 0);
       beam.addColorStop(0, "rgba(255, 255, 220, 0.85)");
@@ -1887,8 +2411,10 @@ class BattleEngine {
     // 角色球体绘制
     if (this.p1) this.drawFighter(ctx, this.p1);
     if (this.p2) this.drawFighter(ctx, this.p2);
+    this.drawArenaUltimate(ctx);
 
     ctx.restore();
+    this.drawSlowMoFx(ctx);
 
     // 暴击与鬼畜弹幕飘字
     this.floatingTexts.forEach((ft) => {
@@ -1907,12 +2433,77 @@ class BattleEngine {
     ctx.restore();
   }
 
+  drawDangerZones(ctx) {
+    const p = this.pendingUltimate;
+    if (p?.phase !== "arena" || p.slot.effectKind === "pk_col_2") return;
+    const a = p.attack, ratio = p.remaining / p.total;
+    ctx.save();
+    ctx.fillStyle = "rgba(255,42,84,0.16)";
+    ctx.strokeStyle = "#ff2a54"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(a.toX, a.toY, a.radius, a.radius * 0.48, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = "#ffe600"; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.ellipse(a.toX, a.toY, a.radius * (1 + ratio), a.radius * (0.48 + ratio * 0.35), 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 4;
+    ctx.textAlign = "center"; ctx.font = "900 18px sans-serif";
+    const label = `IMPACT ${p.remaining.toFixed(2)}s`;
+    ctx.strokeText(label, a.toX, a.toY + a.radius * 0.5 + 25); ctx.fillText(label, a.toX, a.toY + a.radius * 0.5 + 25);
+    ctx.restore();
+  }
+
+  drawArenaUltimate(ctx) {
+    const p = this.pendingUltimate;
+    if (p?.phase !== "arena" || p.slot.effectKind === "pk_col_2") return;
+    const a = p.attack;
+    ctx.save();
+    ctx.strokeStyle = p.caster.accent; ctx.lineWidth = 16;
+    ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.moveTo(a.fromX, a.fromY); ctx.lineTo(a.x, a.y); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.translate(a.x, a.y);
+    ctx.shadowColor = p.caster.accent; ctx.shadowBlur = 20;
+    const kind = p.slot.effectKind;
+    if (kind === "ult_basketball_rain") {
+      ctx.fillStyle = "#ff9500"; ctx.strokeStyle = "#251102"; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(0, 0, 60, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-60, 0); ctx.lineTo(60, 0); ctx.moveTo(0, -60); ctx.lineTo(0, 60); ctx.stroke();
+    } else if (kind === "ult_heli_crash") {
+      ctx.rotate(Math.PI / 7); ctx.fillStyle = "#943bdb"; ctx.strokeStyle = "#ffe600"; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.ellipse(0, 0, 74, 35, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-102, -48); ctx.lineTo(102, -48); ctx.moveTo(0, -48); ctx.lineTo(0, -25); ctx.moveTo(-74, 0); ctx.lineTo(-130, -20); ctx.stroke();
+    } else if (kind === "ult_cat_frenzy" || kind === "ult_truck_stampede") {
+      const img = this.customImages[p.caster.heroId];
+      if (img) ctx.drawImage(img, -75, -65, 150, 130);
+      else { ctx.font = "100px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(p.caster.emoji, 0, 0); }
+      if (kind === "ult_truck_stampede") {
+        ctx.strokeStyle = "#ffe600"; ctx.lineWidth = 6;
+        const direction = a.toX >= a.fromX ? 1 : -1;
+        ctx.beginPath(); ctx.moveTo(50 * direction, -20); ctx.lineTo(130 * direction, -45); ctx.moveTo(50 * direction, 20); ctx.lineTo(130 * direction, 45); ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle = p.caster.accent; ctx.beginPath(); ctx.arc(0, 0, 55, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  drawSlowMoFx(ctx) {
+    const p = this.pendingUltimate;
+    ctx.save();
+    if (p?.slowRemaining > 0) {
+      ctx.strokeStyle = "#ff2a54"; ctx.lineWidth = 10;
+      ctx.strokeRect(this.arena.x, this.arena.y, this.arena.w, this.arena.h);
+      ctx.fillStyle = "#ffe600"; ctx.font = "900 18px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("IMPACT WINDOW", this.width / 2, this.arena.y + 24);
+    }
+    if (this.dodgeFlashTimer > 0 && this.store.state.settings.effects !== "reduced") {
+      ctx.fillStyle = `rgba(255,255,255,${this.dodgeFlashTimer * 3})`; ctx.fillRect(0, 0, this.width, this.height);
+    }
+    ctx.restore();
+  }
+
   drawFighter(ctx, f) {
     ctx.save();
     ctx.translate(f.x + (f.finaleX || 0), f.y + (f.finaleY || 0));
-    ctx.rotate(f.finaleAngle || 0);
-    ctx.globalAlpha = f.finaleAlpha ?? 1;
-    const fScale = (f.scaleAnim || 1) * (f.finaleScale || 1);
+    ctx.rotate((f.finaleAngle || 0) + (f.morphState?.type === "evade" ? f.morphState.elapsed * 10 : 0));
+    ctx.globalAlpha = (f.finaleAlpha ?? 1) * (f.morphState?.type === "teleport" ? Math.max(0, 1 - f.morphState.elapsed / 0.12) : 1);
+    const fScale = (f.scaleAnim || 1) * (f.finaleScale || 1) * f.morphScale.current;
     ctx.scale(fScale, fScale);
 
     const auraScale = Math.min(2.8, Math.max(1, f.radius / 42));
@@ -2025,9 +2616,9 @@ class BattleEngine {
       btn.className = `battle-skill-btn ${slot.isUlt ? "ult" : ""}`;
       btn.dataset.idx = idx;
       btn.innerHTML = `
-        <div class="cd-mask" id="cd-mask-${idx}" style="height: 0%"></div>
+        <div class="cd-mask ${slot.isUlt ? "hidden" : ""}" id="cd-mask-${idx}" style="height: 0%"></div>
         <span class="sk-name">[${idx + 1}] ${slot.name}</span>
-        <span class="sk-sub">${slot.isUlt ? "🌈大招" : "Lv." + slot.level}</span>
+        <span class="sk-sub">${slot.isUlt ? `⚡究极 ${Math.floor(this.p1.ultimateEnergy)}%` : "Lv." + slot.level}</span>
       `;
       btn.addEventListener("click", () => {
         if (!this.running) return;
@@ -2041,15 +2632,11 @@ class BattleEngine {
     if (!this.p1) return;
     this.p1.activeSlots.forEach((slot, idx) => {
       const mask = document.getElementById(`cd-mask-${idx}`);
+      if (slot.isUlt) return;
       const btn = mask ? mask.parentElement : null;
       if (!mask || !btn) return;
-      const pct = Math.min(100, Math.max(0, (slot.cdLeft / slot.cooldown) * 100));
-      mask.style.height = `${pct}%`;
-      if (slot.cdLeft <= 0) {
-        btn.classList.add("ready");
-      } else {
-        btn.classList.remove("ready");
-      }
+      mask.style.height = `${Math.min(100, Math.max(0, (slot.cdLeft / slot.cooldown) * 100))}%`;
+      btn.classList.toggle("ready", slot.cdLeft <= 0);
     });
   }
 
@@ -2064,6 +2651,14 @@ class BattleEngine {
     document.getElementById("hud-p1-hp-delay").style.width = `${p1Pct}%`;
     document.getElementById("hud-p1-hp-txt").textContent = `${Math.ceil(this.p1.hp)} / ${this.p1.maxHp}${this.p1.shield > 0 ? ` 🛡${Math.ceil(this.p1.shield)}` : ""}`;
     document.getElementById("hud-p2-hp").style.width = `${p2Pct}%`;
+    const updateEnergy = (fighter, fillId, textId) => {
+      const pct = Math.max(0, Math.min(100, fighter.ultimateEnergy));
+      const fill = document.getElementById(fillId); const text = document.getElementById(textId);
+      if (fill) fill.style.width = `${pct}%`;
+      if (text) text.textContent = `${Math.floor(pct)}%`;
+    };
+    updateEnergy(this.p1, "hud-p1-ult", "hud-p1-ult-txt");
+    updateEnergy(this.p2, "hud-p2-ult", "hud-p2-ult-txt");
     document.getElementById("hud-p2-hp-delay").style.width = `${p2Pct}%`;
     document.getElementById("hud-p2-hp-txt").textContent = `${Math.ceil(this.p2.hp)} / ${this.p2.maxHp}${this.p2.shield > 0 ? ` 🛡${Math.ceil(this.p2.shield)}` : ""}`;
     document.getElementById("hud-timer").textContent = Math.max(0, Math.ceil(this.matchTimeLeft));
@@ -2092,6 +2687,10 @@ class BattleEngine {
   }
 
   finishMatch() {
+    if (this.isRecordingActive()) {
+      this.applyRecordingGuards();
+      return this.outcome;
+    }
     if (!this.running) return this.outcome;
     if (this.finale) return this.outcome;
     const timedOut = this.matchTimeLeft <= 0;
@@ -2106,8 +2705,8 @@ class BattleEngine {
     if (!this.headless && !this.finalePlayed) {
       this.state = 'finishing';
       this.queuedCasts = [];
-      this.pendingUltimate = null;
-      this.showUltimateCutin(false);
+      this.clearUltimate();
+      this.clones = []; this.summons = []; this.phantoms = [];
       document.getElementById('qte-counter-btn')?.classList.add('hidden');
       this.finale = new window.BattleFinale(this);
       return this.outcome;
@@ -2118,8 +2717,8 @@ class BattleEngine {
     if (this.frameId !== null) cancelAnimationFrame(this.frameId);
     this.frameId = null;
     this.queuedCasts = [];
-    this.pendingUltimate = null;
-    this.showUltimateCutin(false);
+    this.clearUltimate();
+    this.clones = []; this.summons = []; this.phantoms = [];
     if (this.headless) return this.outcome;
     document.getElementById("qte-counter-btn")?.classList.add("hidden");
     const reward = window.GAME_CONFIG.rewards;
@@ -2137,7 +2736,7 @@ class BattleEngine {
     const loser = hero === this.p1 ? this.p2 : this.p1;
     const theme = hero ? window.FINALE_THEMES[hero.heroId] : null;
     if (hero && theme?.mvp) {
-      window.memeAudio?.playFinaleClip?.(theme.mvp);
+      window.memeAudio?.playFinaleClip?.(theme.mvp, false);
     }
     const result = document.getElementById('result-overlay');
     result.dataset.hero = hero?.heroId || 'draw';

@@ -39,8 +39,9 @@ window.MEME_DATA = {
           cooldown: 4.0,
           type: "active",
           effectKind: "beam_flash",
+          animationType: "scale",
           baseDamage: 105,
-          desc: "爆闪远光灯直射对手，造成伤害并削弱其架势条",
+          desc: "真身短暂变大至1.65倍，爆闪远光灯弹幕造成伤害并削弱架势",
           shout: "远光灯警告!!"
         },
         {
@@ -52,8 +53,9 @@ window.MEME_DATA = {
           cooldown: 3.6,
           type: "active",
           effectKind: "dash_ram",
+          animationType: "dash_trail",
           baseDamage: 135,
-          desc: "瞬间朝敌人方向暴力冲刺撞击，贴脸释放伤害+45%",
+          desc: "氮气加速冲刺0.5秒，留下彩色残影，沿途首次撞到对手造成伤害",
           shout: "排水沟过弯!!"
         },
         {
@@ -65,8 +67,9 @@ window.MEME_DATA = {
           cooldown: 4.2,
           type: "active",
           effectKind: "proj_burst",
+          animationType: "summon",
           baseDamage: 120,
-          desc: "向四周狂甩4个燃烧备胎弹幕，触碰爆炸",
+          desc: "召唤转生重卡向对手冲撞，独立移动并造成一次伤害",
           shout: "备胎全飞啦!!"
         }
       ],
@@ -76,10 +79,10 @@ window.MEME_DATA = {
           name: "异世界送货专列",
           rarity: "UR",
           unlockedDefault: true,
-          cooldown: 9.0,
           type: "active",
+          ultimate: true,
           effectKind: "ult_truck_stampede",
-          baseDamage: 320,
+          animationType: "scale",
           pityPrice: 200,
           cutinTitle: "【究极奥义】异世界转生百吨专列!!",
           cutinSub: "完了完了！前面是泥头车车队！快抓落地红圈闪避！",
@@ -90,7 +93,7 @@ window.MEME_DATA = {
           cutinSealText: "DAYUN EXPRESS // ISEKAI SEAL RELEASE // HUNDRED-TON OVERDRIVE",
           cutinProps: ["🚛", "⚠️", "⚡", "💥", "🛞", "🔥"],
           cutinStages: ["✦ 第一幕：百吨魔法阵展开 ✦", "✦ 第二幕：远光灯全开 · 泥头车变身 ✦", "✦ 第三幕：锁定目标 · 全速撞击衔接 ✦"],
-          desc: "【全屏动画大招】播放泥头车长鸣前摇动画，1.55秒后召唤百吨王轰炸目标区域（最后0.75秒成功闪避可取消本次大招）！",
+          desc: "【主动究极】0.9秒特写后百吨专列冲入战场，0.6秒后命中；核心为目标最大生命36%（等级至多48%），3辆车附加伤害总额不超过15%。最后0.22秒可回避，0.08秒可拆招",
           shout: "隐藏着异世界力量的钥匙啊！全员准备转生!!"
         },
         {
@@ -100,9 +103,8 @@ window.MEME_DATA = {
           unlockedDefault: false,
           type: "passive",
           effectKind: "ult_passive_juggernaut",
-          baseDamage: 175,
           pityPrice: 220,
-          desc: "【被动大招】无需按键！每3.5秒自动爆发出环形尾气冲击波，回血90点并永久变大4%",
+          desc: "【被动究极】究极能量充满后触发，核心造成目标最大生命22%（随等级至多30%），附加命中总额不超过15%，并回血90点、永久变大4%",
           shout: "全自动百吨装甲!!"
         }
       ]
@@ -132,8 +134,9 @@ window.MEME_DATA = {
           cooldown: 3.2,
           type: "active",
           effectKind: "melee_flurry",
+          animationType: "blitz",
           baseDamage: 98,
-          desc: "向周围疯狂挥出残影猫爪，距离越近连击越高",
+          desc: "0.4秒内穿梭战场折返三次，每次穿过对手造成三分之一技能伤害",
           shout: "阿巴阿巴喵拳!!"
         },
         {
@@ -145,8 +148,9 @@ window.MEME_DATA = {
           cooldown: 3.8,
           type: "active",
           effectKind: "proj_burst",
+          animationType: "summon",
           baseDamage: 125,
-          desc: "向对手投掷旋转猫砂盆，命中附加减速毒雾",
+          desc: "召唤猫猫护卫突袭对手，命中造成伤害并减速2秒",
           shout: "吃我满盆猫砂!!"
         },
         {
@@ -169,13 +173,13 @@ window.MEME_DATA = {
           name: "耄耋红温大暴走",
           rarity: "UR",
           unlockedDefault: true,
-          cooldown: 8.8,
           type: "active",
+          ultimate: true,
           effectKind: "ult_cat_frenzy",
-          baseDamage: 310,
+          animationType: "blitz",
           pityPrice: 200,
           cutinTitle: "【究极奥义】耄耋红温·千爪破防杀!!",
-          cutinSub: "急了急了彻底红温了！锁定1.55秒后瞬移扑杀！",
+          cutinSub: "红温真身即将扑入战场！等警示圈收缩后回避或拆招！",
           cutinBg: "linear-gradient(135deg, #2b0700 0%, #9c2700 45%, #ff5500 78%, #ffe600 100%)",
           cutinTheme: "hajimi",
           cutinChant: "隐藏着哈基米力量的猫薄荷啊 · 在我面前显示红温真身！",
@@ -183,7 +187,7 @@ window.MEME_DATA = {
           cutinSealText: "HAJIMI MAODIE // CARDCAPTOR FURY // THOUSAND-CLAW OVERHEAT",
           cutinProps: ["😾", "🐾", "💢", "🐟", "🔥", "⚡"],
           cutinStages: ["✦ 第一幕：猫薄荷星阵唤醒 ✦", "✦ 第二幕：血压拉满 · 耄耋红温变身 ✦", "✦ 第三幕：千爪残影 · 瞬移扑杀衔接 ✦"],
-          desc: "【全屏动画大招】全屏特写红温哈气动画，锁定目标1.55秒后瞬移五连抓（抓落地瞬间可极限闪避）！",
+          desc: "【主动究极】0.9秒特写后真身扑杀，战场0.6秒后命中；核心为目标最大生命36%（等级至多48%），猫猫护卫附加伤害总额不超过15%。最后0.22秒可回避，0.08秒可拆招",
           shout: "咕咕嘎嘎！彻底疯狂哈基米!!"
         },
         {
@@ -193,9 +197,8 @@ window.MEME_DATA = {
           unlockedDefault: false,
           type: "passive",
           effectKind: "ult_passive_laser",
-          baseDamage: 165,
           pityPrice: 220,
-          desc: "【被动大招】无需按键！场上持续生成红外线激光点，每3.5秒自动灼烧对手",
+          desc: "【被动究极】究极能量充满后触发，核心造成目标最大生命22%（随等级至多30%），并生成附加激光命中，附加伤害总额不超过15%",
           shout: "红点锁定你了!!"
         }
       ]
@@ -225,8 +228,9 @@ window.MEME_DATA = {
           cooldown: 3.4,
           type: "active",
           effectKind: "dash_ram",
+          animationType: "teleport",
           baseDamage: 115,
-          desc: "高速突进一记重肘，若在贴脸距离施放必定暴击",
+          desc: "原地消散0.12秒后在对手身后重现，重肘突袭必定暴击",
           shout: "看我这一肘!!"
         },
         {
@@ -251,8 +255,9 @@ window.MEME_DATA = {
           cooldown: 4.1,
           type: "active",
           effectKind: "proj_burst",
+          animationType: "clones",
           baseDamage: 130,
-          desc: "后撤拉开距离并连射3颗燃烧篮球弹幕",
+          desc: "分裂两个持续0.8秒的镜像夹击，本体发射篮球；三路各承担三分之一技能伤害",
           shout: "美如画后仰!!"
         }
       ],
@@ -262,13 +267,13 @@ window.MEME_DATA = {
           name: "天降曼巴直升机",
           rarity: "UR",
           unlockedDefault: true,
-          cooldown: 9.2,
           type: "active",
+          ultimate: true,
           effectKind: "ult_heli_crash",
-          baseDamage: 335,
+          animationType: "summon",
           pityPrice: 220,
           cutinTitle: "【究极奥义】孩子们·曼巴直升机天降正义!!",
-          cutinSub: "See You Again 响起了！1.55秒后螺旋桨重肘轰击红圈！",
+          cutinSub: "曼巴直升机即将俯冲！回到战场后看准红圈拆招！",
           cutinBg: "linear-gradient(135deg, #16002c 0%, #561496 48%, #9b26ff 78%, #ffe600 100%)",
           cutinTheme: "laoda",
           cutinChant: "凌晨四点半的星光啊 · 赐予我紫金冰红茶的曼巴真身！",
@@ -276,7 +281,7 @@ window.MEME_DATA = {
           cutinSealText: "MAMBA FOREVER // 24-8 GOLDEN AURA // HELICOPTER ELBOW DROP",
           cutinProps: ["🚁", "🏀", "🍹", "👑", "💜", "⚡"],
           cutinStages: ["✦ 第一幕：紫金24号星阵降临 ✦", "✦ 第二幕：冰红茶灌注 · 曼巴觉醒变身 ✦", "✦ 第三幕：螺旋桨锁定 · 天降重肘衔接 ✦"],
-          desc: "【全屏动画大招】触发全屏紫金曼巴觉醒动画，1.55秒后从天而降毁灭重肘（可极限闪避躲开核心冲击）！",
+          desc: "【主动究极】0.9秒特写后直升机俯冲，战场0.6秒后命中；核心为目标最大生命36%（等级至多48%），3架护航机附加伤害总额不超过15%。最后0.22秒可回避，0.08秒可拆招",
           shout: "孩子们我回来了！曼巴出击!!"
         },
         {
@@ -286,9 +291,8 @@ window.MEME_DATA = {
           unlockedDefault: false,
           type: "passive",
           effectKind: "ult_passive_mamba",
-          baseDamage: 180,
           pityPrice: 220,
-          desc: "【被动大招】无需按键！血量越低攻速与反弹速度越快，每3.5秒自动挥出曼巴铁肘",
+          desc: "【被动究极】究极能量充满后触发，核心造成目标最大生命22%（随等级至多30%），并挥出附加铁肘，附加伤害总额不超过15%",
           shout: "曼巴永不熄火!!"
         }
       ]
@@ -318,8 +322,9 @@ window.MEME_DATA = {
           cooldown: 3.4,
           type: "active",
           effectKind: "dash_ram",
+          animationType: "scale",
           baseDamage: 110,
-          desc: "用肩膀猛烈顶飞对手，造成击退与高额架势削减",
+          desc: "真身短暂变大至1.65倍，用肩膀猛烈撞击，削减对手架势",
           shout: "铁山靠顶飞!!"
         },
         {
@@ -331,8 +336,9 @@ window.MEME_DATA = {
           cooldown: 3.9,
           type: "active",
           effectKind: "proj_burst",
+          animationType: "clones",
           baseDamage: 128,
-          desc: "发射在场地内高速弹跳5次的巨型火焰篮球",
+          desc: "分裂两个持续0.8秒的镜像夹击，本体发射篮球；镜像受击或命中后消散",
           shout: "看我运球如风!!"
         },
         {
@@ -355,13 +361,13 @@ window.MEME_DATA = {
           name: "万凰朝宗篮球雨",
           rarity: "UR",
           unlockedDefault: true,
-          cooldown: 9.0,
           type: "active",
+          ultimate: true,
           effectKind: "ult_basketball_rain",
-          baseDamage: 325,
+          animationType: "summon",
           pityPrice: 220,
           cutinTitle: "【究极奥义】练习生两年半·万凰朝宗篮球陨石!!",
-          cutinSub: "中分头背带裤全屏公演开始！注意躲避1.55秒后的陨石红圈！",
+          cutinSub: "篮球陨石即将降临！回到战场后看准红圈回避！",
           cutinBg: "linear-gradient(135deg, #001329 0%, #004e8c 45%, #00d4ff 78%, #ff2a54 100%)",
           cutinTheme: "kunge",
           cutinChant: "修炼两年半的唱跳RAP之力啊 · 化作中分背带裤舞台降临！",
@@ -369,7 +375,7 @@ window.MEME_DATA = {
           cutinSealText: "TWO AND A HALF YEARS // KUN STAGE // PHOENIX BASKETBALL METEOR",
           cutinProps: ["🏀", "🐔", "🎵", "🪶", "✨", "🎤"],
           cutinStages: ["✦ 第一幕：两年半公演星阵点亮 ✦", "✦ 第二幕：背带裤铁山靠 · 坤哥C位变身 ✦", "✦ 第三幕：万凰朝宗 · 陨石篮球衔接 ✦"],
-          desc: "【全屏动画大招】全场黑屏C位灯光秀前摇，1.55秒后天降巨型燃烧篮球砸向目标（可抓瞬间闪避）！",
+          desc: "【主动究极】0.9秒特写后篮球陨石降临，战场0.6秒后命中；核心为目标最大生命36%（等级至多48%），3个防守中锋附加伤害总额不超过15%。最后0.22秒可回避，0.08秒可拆招",
           shout: "你干嘛哎哟！唱跳RAP终极奥义!!"
         },
         {
@@ -379,9 +385,8 @@ window.MEME_DATA = {
           unlockedDefault: false,
           type: "passive",
           effectKind: "ult_passive_orbit",
-          baseDamage: 175,
           pityPrice: 220,
-          desc: "【被动大招】无需按键！3颗高速旋转篮球常驻环绕周身，触碰即炸",
+          desc: "【被动究极】究极能量充满后触发，核心造成目标最大生命22%（随等级至多30%），并生成2个护体篮球附加命中，附加伤害总额不超过15%",
           shout: "护体篮球全开!!"
         }
       ]
@@ -409,9 +414,8 @@ window.MEME_DATA = {
       name: "蒙多想去哪就去哪",
       rarity: "UR",
       type: "active",
+      ultimate: true,
       unlockedDefault: true,
-      cooldown: 7.5,
-      baseDamage: 90,
       heal: 220,
       pityPrice: 180,
       cutinTitle: "【巨像觉醒】蒙多医生·狂暴巨大化!!",
@@ -423,7 +427,7 @@ window.MEME_DATA = {
       cutinSealText: "COLOSSUS HEARTSTEEL // INFINITE GROWTH // MUNDO GOES WHERE HE PLEASES",
       cutinProps: ["🟢", "🛡️", "💪", "⚡", "💚", "🔨"],
       cutinStages: ["✦ 第一幕：心之钢巨像法阵共鸣 ✦", "✦ 第二幕：生命狂涌 · 体型暴涨变身 ✦", "✦ 第三幕：巨像降临 · 碾压全场衔接 ✦"],
-      desc: "【彩色主动】立即回复220血，永久膨胀25%体型！体型越大碰撞碾压伤害越高，体型受场地安全上限保护！",
+      desc: "【主动究极】究极能量充满后触发，立即回复220血并永久膨胀25%体型；该成长究极不造成核心伤害",
       shout: "蒙多觉得你是个大娘们!!"
     },
     {
@@ -481,6 +485,7 @@ window.MEME_DATA = {
       rarity: "SR",
       type: "active",
       unlockedDefault: true,
+      animationType: "teleport",
       cooldown: 4.5,
       baseDamage: 175,
       pityPrice: 60,
@@ -532,7 +537,7 @@ window.MEME_DATA = {
       unlockedDefault: true,
       cooldown: 0,
       pityPrice: 180,
-      desc: "【法术流核心】所有主动技能与大招冷却速度加快65%！并且每次释放技能额外发出2颗奥术飞弹！",
+      desc: "【法术流核心】非究极主动技能冷却速度加快65%，每次非究极技能额外发出2颗奥术飞弹；不加速或复制究极！",
       shout: "🔥无限火力全开!!"
     },
     {
@@ -541,12 +546,11 @@ window.MEME_DATA = {
       name: "全屏高能弹幕洗地",
       rarity: "UR",
       type: "active",
+      ultimate: true,
       unlockedDefault: false,
-      cooldown: 6.5,
-      baseDamage: 240,
       pityPrice: 180,
       cutinTitle: "【法术奥义】前方高能·亿万彩虹弹幕雨!!",
-      cutinSub: "满屏弹幕护体正在蓄力！1.55秒后覆盖轰炸！",
+      cutinSub: "特写结束后高能弹幕飞入战场，看准落点回避！",
       cutinBg: "linear-gradient(135deg, #000d29 0%, #0044aa 45%, #00f0ff 78%, #b829ff 100%)",
       cutinTheme: "mage",
       cutinChant: "无限火力的奥术星辰啊 · 倾泻满屏彩虹弹幕洗礼战场吧！",
@@ -554,7 +558,7 @@ window.MEME_DATA = {
       cutinSealText: "ARCANE OVERDRIVE // UNLIMITED BARRAGE // RAINBOW STARLIGHT",
       cutinProps: ["🔵", "✨", "🌟", "🔮", "⚡", "🌈"],
       cutinStages: ["✦ 第一幕：奥术无限星阵展开 ✦", "✦ 第二幕：法力沸腾 · 弹幕女神变身 ✦", "✦ 第三幕：亿万彩虹 · 全屏轰炸衔接 ✦"],
-      desc: "【彩色主动】播放全屏弹幕前摇，随后向目标方向倾泻12颗高能散射弹幕，视觉统治力拉满！",
+      desc: "【主动究极】0.9秒特写后战场蓄势0.6秒命中并生成5枚弹幕；核心为目标最大生命36%（等级至多48%），附加伤害总额不超过15%。最后0.22秒可回避，0.08秒可拆招",
       shout: "前方高能弹幕洗地!!"
     },
     {
@@ -577,7 +581,7 @@ window.MEME_DATA = {
       unlockedDefault: true,
       cooldown: 0,
       pityPrice: 60,
-      desc: "【法术流】释放任何主动技能时，有50%概率0.3秒后免费再自动重放一次！",
+      desc: "【法术流】释放非究极主动技能时，有50%概率0.3秒后免费重放一次；镜像不重复充能、不重放究极！",
       shout: "双重施法触发!!"
     },
     {
@@ -711,9 +715,8 @@ window.MEME_DATA = {
       name: "砸瓦鲁多·子弹时间",
       rarity: "UR",
       type: "active",
+      ultimate: true,
       unlockedDefault: false,
-      cooldown: 7.5,
-      baseDamage: 180,
       pityPrice: 180,
       cutinTitle: "【武学奥义】静如处子·心眼子弹时间!!",
       cutinSub: "看破一切破绽！冻结全场2秒并连续寸拳暴打！",
@@ -724,7 +727,7 @@ window.MEME_DATA = {
       cutinSealText: "SIFU WUDE // TIME FREEZE FOCUS // ONE-INCH PUNCH EXECUTION",
       cutinProps: ["🟡", "🥋", "🪙", "👊", "⚡", "⏱️"],
       cutinStages: ["✦ 第一幕：太极铜钱卦阵运转 ✦", "✦ 第二幕：重返巅峰 · 武道宗师变身 ✦", "✦ 第三幕：时停破绽 · 寸拳连打衔接 ✦"],
-      desc: "【彩色主动】开启《师父》专注心眼冻结对手2.0秒，期间我方所有攻击必定暴击且打爆架势条！",
+      desc: "【主动究极】究极能量充满后触发，冻结全场2秒；核心造成目标最大生命36%（随等级至多48%），附加伤害总额不超过15%",
       shout: "看破你的破绽了!!"
     }
   ]
@@ -971,14 +974,18 @@ class GameStore {
     let gainedCoins = 0;
     let upgradedCount = 0;
 
-    const pendingIds = new Set(this.state.pendingPulls.map((entry) => entry.uid));
-    pullResults.forEach((entry) => {
-      if (!pendingIds.delete(entry.uid)) return;
+    const pendingById = new Map(this.state.pendingPulls.map((entry) => [entry.uid, entry]));
+    const consumed = new Set();
+    pullResults.forEach((submitted) => {
+      if (!submitted || consumed.has(submitted.uid)) return;
+      const entry = pendingById.get(submitted.uid);
+      if (!entry) return;
+      consumed.add(submitted.uid);
       if (!entry.isDupe) return;
       const it = entry.item;
-      if (entry.chosenAction === "convert" || it.poolType === "hero") {
+      if (submitted.chosenAction === "convert" || it.poolType === "hero") {
         gainedCoins += it.pityValue;
-      } else if (entry.chosenAction === "upgrade") {
+      } else if (submitted.chosenAction === "upgrade") {
         upgradedCount++;
         if (it.poolType === "perk") {
           this.state.perkLevels[it.id] = (this.state.perkLevels[it.id] || 1) + 1;

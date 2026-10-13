@@ -1,6 +1,7 @@
 // 构筑事件：二次伤害不再触发反伤和反击，避免无限递归。
 window.BattleEffects = {
   onCast(engine, caster, target, slot, headless) {
+    if (slot.isUlt) return;
     if (caster.heroId === "kunge" && caster.castCount % 3 === 0) {
       engine.applyDamage(caster, target, 75, "🐔羽毛爆裂", true, headless, { secondary: true });
       if (!headless) {

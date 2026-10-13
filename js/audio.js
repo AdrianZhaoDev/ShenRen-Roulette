@@ -367,8 +367,8 @@ class MemeAudio {
     this.playNoiseBurst(0.38, 0.48, 700);
   }
 
-  playFinaleClip(key) {
-    this.stopVoices();
+  playFinaleClip(key, interrupt = true) {
+    if (interrupt) this.stopVoices();
     if (!this.enabled || !this.voiceEnabled) return;
     const path = 'assets/sounds/' + key + '.mp3';
     const audio = this.audioCache[path] || (this.audioCache[path] = new Audio(path));

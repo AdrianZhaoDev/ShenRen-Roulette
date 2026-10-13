@@ -2,7 +2,23 @@
 window.GAME_CONFIG = {
   fixedStep: 1 / 60,
   speed: { default: 1, choices: [0.5, 1, 1.5, 2], movement: 0.6 },
-  ultimate: { windup: 1.55, dodgeWindow: 0.75 },
+  combat: {
+    skillDamageGrowth: 0.28,
+    passiveSkillDamageGrowth: 0.25,
+    passiveOrbitDamage: 52.5,
+    fighter: { baseRadius: 32, defaultMaxHp: 2200, maxShield: 900 },
+    collision: { baseDamage: 42, dayunWallHit: 55, laodaElbow: 70, stanceLoss: 10 },
+    phaseDamageMultiplier: { early: 1, mid: 1.1, late: 1.3, overtime: 1.7 },
+    ultimate: {
+      maxEnergy: 100, initialEnergy: 0, gainOnCast: 12, gainOnCollision: 6, gainOnPerfectDodge: 20,
+      cutinDuration: 0.9, arenaDuration: 0.6, dodgeWindow: 0.22, counterWindow: 0.08,
+      slowScale: 0.2, slowDuration: 0.3, dodgeInvulnerability: 0.55, counterReflectRatio: 0.1,
+      activeCoreRatio: 0.36, activeCoreLevelGrowth: 0.08, activeCoreRatioCap: 0.48,
+      passiveCoreRatio: 0.22, passiveCoreLevelGrowth: 0.06, passiveCoreRatioCap: 0.30,
+      secondaryCount: 3, secondaryDamageRatio: 0.05, secondaryBudgetRatio: 0.15,
+      mageSecondaryCount: 5, passiveSecondaryCount: 2
+    }
+  },
   modes: {
     quick: { name: "录屏短局", duration: 60, initialHp: 1800 },
     classic: { name: "构筑长局", duration: 300, initialHp: 6000 }

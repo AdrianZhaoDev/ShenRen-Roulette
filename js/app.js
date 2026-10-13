@@ -5,6 +5,7 @@ class AppController {
     this.store = window.gameStore;
     this.canvas = document.getElementById("battle-canvas");
     this.engine = new window.BattleEngine(this.canvas);
+    this.engine.onScenarioChange = () => this.updateScenarioProgress();
     this.pendingPulls = this.store.state.pendingPulls;
     this.draftTimerId = null;
     this.draftGeneration = 0;
@@ -85,44 +86,144 @@ class AppController {
       this.notice(engine.running ? "请继续对局，并等待眩晕、时停或大招前摇结束后触发剧情" : "先开始一局对战，再触发固定剧情");
       return false;
     }
-    const { p1, p2, arena } = engine;
-    if (key === "q") {
-      p1.hp = 1;
-      p1.immortalTimer = Math.max(p1.immortalTimer, 3.5);
-      p1.activeSlots.forEach((slot) => { slot.cdLeft = 0; });
-      engine.spawnText("🎬剧本：1滴血锁血+全技能就绪!!", p1.x, p1.y - 50, "#ffe600", 24);
-    } else if (key === "w") {
-      p2.hp = 1;
-      engine.spawnText("🎬剧本：对手破防仅剩1滴血!!", p2.x, p2.y - 50, "#ff2a54", 24);
-    } else if (key === "e") {
-      const cx = arena.x + arena.w / 2;
-      const cy = arena.y + arena.h / 2;
-      const gap = (p1.radius + p2.radius) * 0.45;
-      p1.x = cx - gap;
-      p1.y = cy;
-      p2.x = cx + gap;
-      p2.y = cy;
-      engine.spawnText("🎬剧本：贴脸大乱斗!!", cx, cy - 60, "#00eaff", 24);
-    } else if (key === "r") {
-      for (let i = 0; i < 4; i++) {
-        engine.truckHazards.push({
-          owner: p1, x: arena.x - 110 - i * 90,
-          y: arena.y + arena.h * (i + 0.5) / 4,
-          vx: 720, w: 110, h: 54, dmg: 140, hitDone: false
-        });
-      }
-      engine.spawnText("🚛 导演指令：百吨王车队进场!!", arena.x + arena.w / 2, arena.y + arena.h / 2, "#ffe600", 26);
+    return engine.executeScenarioCue({ action: key }, engine.headless);
+  }
+
+  parseScenario(source) {
+    let timeline;
+    try {
+      timeline = JSON.parse(source);
+    } catch {
+      throw new Error("JSON 格式错误");
     }
-    if (!engine.headless) engine.updateTopHudUI();
-    return true;
+    const error = window.BattleEngine.validateScenario(timeline);
+    if (error) throw new Error(error);
+    return timeline;
+  }
+
+  setScenarioStatus(message, error = false) {
+    const status = document.getElementById("scenario-status");
+    status.textContent = message;
+    status.className = error ? "scenario-status-err" : "scenario-status-ok";
+  }
+
+  loadScenario(source) {
+    const editor = document.getElementById("scenario-editor");
+    try {
+      const timeline = this.parseScenario(source ?? editor.value);
+      if (source !== undefined) editor.value = JSON.stringify(timeline, null, 2);
+      editor.setAttribute("aria-invalid", "false");
+      this.setScenarioStatus("");
+      if (timeline.recording) this.switchScreen("screen-lobby");
+      this.engine.loadScenario(timeline);
+      this.updateScenarioProgress();
+      return true;
+    } catch (error) {
+      if (source === undefined) editor.setAttribute("aria-invalid", "true");
+      this.setScenarioStatus(`${error.message}（当前剧本未替换）`, true);
+      return false;
+    }
+  }
+
+  exportScenario() {
+    try {
+      const timeline = this.parseScenario(document.getElementById("scenario-editor").value);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(timeline, null, 2)], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "shenren-scenario.json";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      this.setScenarioStatus("已导出编辑区 JSON，未改变当前对局");
+    } catch (error) {
+      this.setScenarioStatus(error.message, true);
+    }
+  }
+
+  clearScenario() {
+    this.engine.clearScenario();
+    document.getElementById("scenario-editor").setAttribute("aria-invalid", "false");
+    this.setScenarioStatus("已清除剧本；编辑区内容保留");
+  }
+
+  renderScenarioStage() {
+    const scenario = this.engine.scenario;
+    const visible = this.engine.running || this.engine.state === "result";
+    const caption = visible ? scenario?.caption : null;
+    const box = document.getElementById("story-caption");
+    box.classList.toggle("hidden", !caption);
+    box.classList.toggle("story-ending", !!this.engine.finale || this.engine.state === "result");
+    document.getElementById("story-caption-text").textContent = caption?.content || "";
+    document.getElementById("story-caption-text").style.color = caption?.color || "";
+    document.getElementById("story-chapter").textContent = caption ? scenario.chapter || "" : "";
+    const label = document.getElementById("story-recording-label");
+    label.classList.toggle("hidden", !visible || !scenario?.recording || !scenario.started);
+    label.textContent = scenario?.recording ? `导演剧情演出 · ${scenario.title}` : "";
+  }
+
+  updateScenarioProgress() {
+    this.renderScenarioStage();
+    this.refreshMode();
+    const scenario = this.engine.scenario;
+    document.getElementById("btn-scenario-play").disabled = !scenario;
+    const meta = document.getElementById("scenario-meta");
+    meta.classList.toggle("hidden", !scenario?.recording);
+    if (scenario?.recording) {
+      const total = Math.ceil(scenario.duration + 3.35 + scenario.timeline.reduce((sum, cue) => sum + (cue.action === "pause" ? cue.duration : 0), 0));
+      meta.textContent = `${scenario.title}\n${window.MEME_DATA.heroes[scenario.p1HeroId].name} VS ${window.MEME_DATA.heroes[scenario.p2HeroId].name}\n主剧情 ${scenario.duration} 秒 · 含停顿及收尾约 ${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+    } else meta.textContent = "";
+    document.querySelectorAll("[data-scenario-preset]").forEach((button) => {
+      const preset = window.SCENARIO_PRESETS[button.dataset.scenarioPreset];
+      button.setAttribute("aria-pressed", String(!!preset?.recording && preset.title === scenario?.title));
+    });
+    const el = document.getElementById("scenario-progress");
+    el.replaceChildren();
+    if (!this.engine.scenario) { el.classList.add("hidden"); return; }
+    const { timeline, cursor } = this.engine.scenario;
+    const actionLabels = { q: "绝境翻盘", w: "一击收尾", e: "贴脸", r: "卡车车队", hp: "设血量", ult: "充能", speed: "变速", text: "漂字", pause: "暂停", shield: "护盾", stun: "眩晕", caption: "字幕", guard: "保活", finish: "剧情收尾" };
+    timeline.forEach((cue, i) => {
+      const row = document.createElement("div");
+      row.className = i < cursor ? "cue-done" : i === cursor ? "cue-next" : "cue-pending";
+      const prefix = i < cursor ? "✓" : i === cursor ? "▶" : "·";
+      const detail = cue.content ? `「${cue.content}」` : [
+        cue.target ? (cue.target === "p1" ? "我方" : "敌方") : "",
+        cue.value !== undefined ? String(cue.value) : "",
+        cue.duration !== undefined ? `${cue.duration}s` : ""
+      ].filter(Boolean).join(" · ");
+      row.textContent = `${prefix} ${cue.at}s ${actionLabels[cue.action]} ${detail}`;
+      el.appendChild(row);
+    });
+    el.classList.remove("hidden");
+    if (document.getElementById("scenario-status").classList.contains("scenario-status-err")) return;
+    const count = `${cursor}/${timeline.length}`;
+    const status = cursor === timeline.length ? `已执行 ${count} · 剧本完成`
+      : this.engine.finale || (!this.engine.running && cursor > 0) ? `对局已结束 · 已执行 ${count}`
+      : scenario.recording && !scenario.started ? `已加载 ${timeline.length} 条剧情 · 点击播放从头演出`
+      : this.engine.running ? `${this.engine.paused ? "暂停中" : "已执行"} ${count}`
+      : `已加载 ${timeline.length} 条剧情 · 开战后执行`;
+    this.setScenarioStatus(status);
   }
 
   refreshMode() {
-    const mode = this.store.state.matchMode;
+    const recording = !!this.engine.scenario?.recording;
+    const mode = recording ? "classic" : this.store.state.matchMode;
     const rules = window.GAME_CONFIG.modes[mode];
-    document.getElementById("match-mode").value = mode;
-    document.getElementById("match-mode-hint").textContent = `3秒选人 + 5秒词条5选3 · ${rules.duration}秒${rules.name}`;
-    this.engine.mode = mode;
+    const picker = document.getElementById("match-mode");
+    picker.value = mode;
+    picker.disabled = recording;
+    document.getElementById("match-mode-hint").textContent = recording
+      ? `导演剧情 · 固定角色 · ${this.engine.scenario.duration} 秒主剧情 · 1×自动演出`
+      : `3秒选人 + 5秒词条5选3 · ${rules.duration}秒${rules.name}`;
+    document.querySelector("#btn-start-match .btn-main-txt").textContent = recording ? "播放已加载剧情" : "⚡ 立即随机匹配开打";
+    document.getElementById("battle-speed").disabled = recording;
+    const auto = document.getElementById("btn-toggle-auto");
+    auto.disabled = recording;
+    auto.textContent = recording ? "剧情自动演出" : `自动释放：${this.store.state.autoBattle ? "开启" : "关闭"}`;
+    auto.classList.toggle("active", recording || this.store.state.autoBattle);
+    document.getElementById("btn-res-again").textContent = recording ? "重播这个剧本" : "⚡ 再来一局 (自动盲盒)";
+    if (!this.engine.running) this.engine.mode = mode;
   }
 
   renderProbabilities() {
@@ -389,9 +490,13 @@ class AppController {
       const buyBtn = row.querySelector(".btn-buy-pity");
       if (owned && it.poolType === "hero") buyBtn.disabled = true;
       buyBtn.addEventListener("click", () => {
+        if (buyBtn.disabled) return;
+        const currentlyOwned = this.store.isItemOwned(it);
+        if (currentlyOwned && it.poolType === "hero") return;
         if (this.store.state.pityCoins < it.pityPrice) return;
+        buyBtn.disabled = true;
         this.store.state.pityCoins -= it.pityPrice;
-        if (!owned) {
+        if (!currentlyOwned) {
           this.store.unlockItemDirectly(it);
         } else if (it.poolType === "perk") {
           this.store.state.perkLevels[it.id] = (this.store.state.perkLevels[it.id] || 1) + 1;
@@ -440,6 +545,17 @@ class AppController {
   // ==================== 开局快节奏两步盲盒流程 ====================
   // 阶段 A：3秒角色随机抽卡跳动（可点击立即锁定，不点则倒计时结束自动随机选定）
   startMatchDraftFlow() {
+    const recording = this.engine.scenario;
+    if (recording?.recording) {
+      clearInterval(this.draftTimerId);
+      this.draftGeneration++;
+      this.switchScreen("screen-battle");
+      document.getElementById("draft-overlay").classList.add("hidden");
+      document.getElementById("result-overlay").classList.add("hidden");
+      this.toggleDirectorPanel(false);
+      this.engine.startMatch(recording.p1HeroId, []);
+      return;
+    }
     clearInterval(this.draftTimerId);
     this.engine.stop("draft");
     this.draftGeneration++;
@@ -686,6 +802,8 @@ class AppController {
     document.getElementById("qte-counter-btn").addEventListener("click", () => this.engine.triggerManualQTE());
     document.getElementById("ultimate-dodge-btn").addEventListener("click", () => this.engine.triggerUltimateDodge());
     document.getElementById("ultimate-dodge-fallback").addEventListener("click", () => this.engine.triggerUltimateDodge());
+    document.getElementById("ultimate-counter-btn").addEventListener("click", () => this.engine.triggerUltimateCounter());
+    document.getElementById("ultimate-counter-fallback").addEventListener("click", () => this.engine.triggerUltimateCounter());
 
     // 战后结算跳转
     document.getElementById("btn-res-gacha").addEventListener("click", () => {
@@ -733,6 +851,35 @@ class AppController {
     document.querySelectorAll("[data-director-script]").forEach((button) => {
       button.addEventListener("click", () => this.runDirectorScript(button.dataset.directorScript));
     });
+    document.querySelectorAll("[data-scenario-preset]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const preset = window.SCENARIO_PRESETS[button.dataset.scenarioPreset];
+        const editor = document.getElementById("scenario-editor");
+        editor.value = Array.isArray(preset) && preset.length === 0 ? "" : JSON.stringify(preset, null, 2);
+        if (button.dataset.scenarioPreset === "custom") this.clearScenario();
+        else this.loadScenario();
+      });
+    });
+    document.getElementById("btn-scenario-load").addEventListener("click", () => this.loadScenario());
+    document.getElementById("btn-scenario-clear").addEventListener("click", () => this.clearScenario());
+    document.getElementById("btn-scenario-play").addEventListener("click", () => {
+      if (!this.loadScenario()) return;
+      document.body.classList.add("pure-record-mode");
+      this.toggleDirectorPanel(false);
+      this.startMatchDraftFlow();
+    });
+    document.getElementById("btn-scenario-import").addEventListener("click", () => document.getElementById("scenario-file").click());
+    document.getElementById("scenario-file").addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      event.target.value = "";
+      if (!file) return;
+      try {
+        this.loadScenario(await file.text());
+      } catch (error) {
+        this.setScenarioStatus(`无法读取剧本文件：${error.message}`, true);
+      }
+    });
+    document.getElementById("btn-scenario-export").addEventListener("click", () => this.exportScenario());
 
     // 导演录屏作弊快捷键与点击按钮共用剧情逻辑。
     window.addEventListener("keydown", (e) => {
@@ -747,10 +894,14 @@ class AppController {
         this.toggleDirectorPanel(false);
       } else if (e.code === "Space" && this.engine.running) {
         e.preventDefault();
-        this.engine.setPaused(!this.engine.paused);
+        if (this.engine.pendingUltimate && !this.engine.paused) this.engine.triggerUltimateCounter();
+        else this.engine.setPaused(!this.engine.paused);
       } else if (k === "d" && this.engine.running) {
         // 手动技术流：D 键等同于最后一瞬究极闪避
         this.engine.triggerUltimateDodge();
+      } else if (k === "f" && this.engine.running) {
+        e.preventDefault();
+        this.engine.triggerManualQTE();
       } else if (["1", "2", "3", "4", "5"].includes(k) && this.engine.running) {
         const idx = Number(k) - 1;
         this.engine.castActiveSlot(this.engine.p1, this.engine.p2, idx, true, false);

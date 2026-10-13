@@ -1,5 +1,10 @@
 {
   "purpose": "本地个人试玩素材；来源记录不代表授权声明",
+  "maintenance": {
+    "workflow": "新增角色时分别记录图片、GIF/视频、音频的具体文件来源、作者、许可证、下载日期和状态",
+    "statuses": ["verified", "review-required", "blocked"],
+    "rule": "许可证或转载范围不明确时使用 review-required；不得把来源记录当成授权证明"
+  },
   "images": [
     {
       "source": "https://raw.githubusercontent.com/hrhello/cxk-ball/master/images/paddle_1.png",
@@ -47,7 +52,9 @@
     {
       "blocker": "候选下载站要求登录，其他视频源返回访问限制",
       "character": "大运",
-      "status": "原声未取得；保留项目已有语音合成及撞击音效"
+      "status": "review-required",
+      "source": null,
+      "file": null
     }
   ],
   "processing": "本地音频统一响度并在结尾淡出；图片保持原始文件"

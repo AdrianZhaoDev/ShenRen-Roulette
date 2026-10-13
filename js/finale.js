@@ -61,10 +61,10 @@ class BattleFinale {
 
     // 0.45s 播放败者倒地语音，1.75s 落地碰撞声
     this.cue('death', 0.45, () => {
-      if (dead.length) window.memeAudio.playFinaleClip(`finish/${dead[0].heroId}-${slow ? 'slow' : 'death'}`);
+      if (dead.length) window.memeAudio.playFinaleClip(`finish/${dead[0].heroId}-${slow ? 'slow' : 'death'}`, false);
     });
     this.cue('land', 1.75, () => { if (dead.length) window.memeAudio.playImpact(false); });
-    this.cue('announce', 1.85, () => window.memeAudio.playFinaleClip(`finish/${this.kind}`));
+    this.cue('announce', 1.85, () => window.memeAudio.playFinaleClip(`finish/${this.kind}`, false));
 
     // 2.0s 慢动作结束后，胜者在战场上用 1.35 秒丝滑变大并滑向一体化结算页左侧 MVP 立绘位
     if (this.winner && this.winnerStart && this.time >= this.slowMoDuration) {

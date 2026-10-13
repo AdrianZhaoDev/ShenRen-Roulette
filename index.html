@@ -54,7 +54,7 @@
       </div>
       <aside id="director-panel" class="director-panel hidden" aria-labelledby="director-title">
         <div class="director-heading">
-          <h2 id="director-title">🎬 固定剧情 / 调试</h2>
+          <h2 id="director-title">导演剧情 / 录屏</h2>
           <button id="btn-close-director" type="button" aria-label="收起导演面板">收起</button>
         </div>
         <p>开战后点击触发，也可直接按快捷键。暂停、眩晕或大招前摇时，请等待恢复。</p>
@@ -64,6 +64,46 @@
           <button type="button" data-director-script="e"><kbd>E</kbd><span>贴脸大乱斗<small>双方立即贴脸碰撞</small></span></button>
           <button type="button" data-director-script="r"><kbd>R</kbd><span>天降横祸<small>四辆大运卡车进场</small></span></button>
           <button type="button" data-director-script="t"><kbd>T</kbd><span>补充抽卡资源<small>+50 抽卡券 · +500 保底币（保存）</small></span></button>
+        </div>
+        <div class="director-scenario">
+          <h3><label for="scenario-editor">剧本时间轴（JSON）</label></h3>
+          <p id="scenario-help">长剧情固定选角、1×自动演出并保活到结尾。选模板后点“播放剧本”；JSON 可编辑、导入和导出。</p>
+          <div class="scenario-presets recording-presets" aria-label="抖音长剧情模板">
+            <button type="button" data-scenario-preset="delivery"><span>大运外卖</span><small>2:00 · 大运</small></button>
+            <button type="button" data-scenario-preset="bait"><span>残血钓鱼</span><small>1:40 · 哈基米</small></button>
+            <button type="button" data-scenario-preset="billing"><span>血条账单</span><small>2:20 · 肘击王</small></button>
+            <button type="button" data-scenario-preset="audition"><span>面试官下班</span><small>2:40 · 坤哥</small></button>
+            <button type="button" data-scenario-preset="lag"><span>网线保命</span><small>1:50 · 哈基米</small></button>
+          </div>
+          <p id="scenario-meta" class="hidden"></p>
+          <button type="button" id="btn-scenario-play" disabled>播放剧本（纯净画面）</button>
+          <p>短局动作模板 / 自定义</p>
+          <div class="scenario-presets">
+            <button type="button" data-scenario-preset="comeback">逆风翻盘</button>
+            <button type="button" data-scenario-preset="faceoff">贴脸血战</button>
+            <button type="button" data-scenario-preset="truck">卡车派对</button>
+            <button type="button" data-scenario-preset="custom">清空自定义</button>
+          </div>
+          <textarea id="scenario-editor" rows="8" spellcheck="false" aria-describedby="scenario-help scenario-status" placeholder='[{"at":0,"action":"text","content":"剧情开始"},{"at":5,"action":"e"}]'></textarea>
+          <div class="scenario-actions">
+            <button type="button" id="btn-scenario-load">加载剧本</button>
+            <button type="button" id="btn-scenario-clear">清除剧本</button>
+            <button type="button" id="btn-scenario-import">导入 JSON</button>
+            <button type="button" id="btn-scenario-export">导出 JSON</button>
+          </div>
+          <input type="file" id="scenario-file" accept=".json,application/json" class="hidden" aria-label="选择剧本 JSON 文件">
+          <p id="scenario-status" role="status" aria-live="polite" aria-atomic="true"></p>
+          <div id="scenario-progress" class="scenario-progress hidden"></div>
+          <details class="scenario-help">
+            <summary>指令与时间规则</summary>
+            <p><code>q/w/e/r</code> 对应导演按钮。短局数组在不能行动时顺序等待；长剧情作为导演调度按时执行。</p>
+            <p><code>hp/shield</code> 需指定 <code>target</code>（我方 p1 / 敌方 p2）和 <code>value</code>：0 到 1 为最大值比例，大于 1 为绝对值。<code>hp: 0</code> 立即击倒，剧本随对局结束。</p>
+            <p><code>ult</code> + target 只充满能量；<code>stun</code> + target + duration 眩晕若干秒，0 解除眩晕；<code>speed</code> + value 支持 0.5/1/1.5/2，长剧情固定 1×。</p>
+            <p><code>text</code> + content 显示文字，可附 color；<code>pause</code> + duration 冻结若干现实秒后继续，手动暂停/继续可接管。</p>
+            <p><code>caption</code> + content + duration 显示持续字幕，可附 chapter；长剧情的 <code>guard</code> + target + value 设置保活比例，<code>finish</code> 在 duration 秒指定一方退场。</p>
+            <p>长剧情 JSON 包含 title、recording: true、duration、p1HeroId、p2HeroId 和 timeline，加载后需播放/重开生效。短局仍使用数组，中途加载会补执行已过时的节点，可能提前结束。</p>
+            <p>标注时间为剧情秒数，短暂停顿与约 3.35 秒终结演出另计。这里只播放演出，视频请用本地录屏工具录制。</p>
+          </details>
         </div>
         <p class="director-help"><kbd>H</kbd> 展开/收起 · <kbd>Space</kbd> 暂停/继续<br><kbd>P</kbd> 纯净录屏，隐藏导演入口和面板</p>
       </aside>
@@ -192,6 +232,11 @@
       <section id="screen-battle" class="game-screen">
         <!-- 战斗主 Canvas -->
         <canvas id="battle-canvas" width="960" height="540"></canvas>
+        <p id="story-recording-label" class="story-recording-label hidden"></p>
+        <div id="story-caption" class="story-caption hidden" role="status" aria-live="polite" aria-atomic="true">
+          <span id="story-chapter" class="story-chapter"></span>
+          <p id="story-caption-text" class="story-caption-text"></p>
+        </div>
 
         <!-- 顶部对战 HUD -->
         <div id="battle-hud-top" class="battle-hud-top">
@@ -205,6 +250,8 @@
               <div id="hud-p1-hp" class="hp-bar-fill p1" style="width:100%"></div>
               <span id="hud-p1-hp-txt" class="hp-txt">1000/1000</span>
             </div>
+            <div class="ultimate-energy-row"><span>究极能量</span><strong id="hud-p1-ult-txt">0%</strong></div>
+            <div class="ultimate-energy-bar"><div id="hud-p1-ult" class="ultimate-energy-fill p1" style="width:0%"></div></div>
             <div id="hud-p1-passives" class="hud-mini-tags"></div>
           </div>
 
@@ -224,6 +271,8 @@
               <div id="hud-p2-hp" class="hp-bar-fill p2" style="width:100%"></div>
               <span id="hud-p2-hp-txt" class="hp-txt">1000/1000</span>
             </div>
+            <div class="ultimate-energy-row"><span>究极能量</span><strong id="hud-p2-ult-txt">0%</strong></div>
+            <div class="ultimate-energy-bar"><div id="hud-p2-ult" class="ultimate-energy-fill p2" style="width:0%"></div></div>
             <div id="hud-p2-passives" class="hud-mini-tags"></div>
           </div>
         </div>
@@ -233,7 +282,7 @@
           <!-- 动态切换：抽角色盲盒 / 词条5选3 -->
         </div>
 
-        <!-- 百变星阵角色专属变身 + 究极技全屏 Cut-in：前摇阶段三幕变身演出，最后0.75秒开放闪避 -->
+        <!-- 三幕特写只负责蓄力；回到战场后开放临近命中应对。 -->
         <div id="ultimate-cutin-overlay" class="ultimate-cutin-overlay hidden" data-hero="dayun" data-stage="1">
           <div class="cutin-speed-lines"></div>
           <div class="cutin-magic-circle">
@@ -272,23 +321,32 @@
               <div id="cutin-caster" class="cutin-caster">🚛 大运百吨王发动究极技能</div>
               <div id="cutin-chant" class="cutin-chant">「隐藏着异世界力量的钥匙啊 · 解除百吨王限速封印！」</div>
               <div id="cutin-title" class="cutin-title">【究极奥义】异世界转生百吨专列!!</div>
-              <div id="cutin-subtitle" class="cutin-subtitle">高能前摇锁定！抓最后一瞬闪避可以大幅减伤！</div>
+              <div id="cutin-subtitle" class="cutin-subtitle">特写结束后观察战场落点，临近命中时回避或拆招</div>
               <div class="cutin-warning">
-                <span>落地倒计时 <strong id="cutin-timer">1.55s</strong></span>
+                <span>真身觉醒 <strong id="cutin-timer">0.90s</strong></span>
                 <div class="cutin-progress-track"><div id="cutin-progress-fill" class="cutin-progress-fill"></div></div>
               </div>
             </div>
           </div>
-          <button id="ultimate-dodge-btn" class="ultimate-dodge-btn">🥋 最后一瞬！闪避究极技</button>
         </div>
 
-        <button id="ultimate-dodge-fallback" class="ultimate-dodge-fallback hidden">⚡ 极限闪避！</button>
+        <div id="ultimate-response" class="ultimate-response hidden" role="group" aria-label="究极技应对">
+          <strong id="ultimate-response-hint" role="status">现在回避 · D；拆招还需更晚</strong>
+          <div class="ultimate-response-actions">
+            <button id="ultimate-dodge-btn" class="climax-button" aria-keyshortcuts="D">紧急回避 <kbd>D</kbd></button>
+            <button id="ultimate-counter-btn" class="climax-button counter" aria-keyshortcuts="F Space">极限拆招 <kbd>F / 空格</kbd></button>
+          </div>
+        </div>
         <button id="qte-counter-btn" class="qte-counter-btn hidden">⚡ 抓时机！极限弹反</button>
 
         <!-- 底部操作栏：自动开关 + 最多 5 个主动技能按钮（1普通主动 + 0~1主动究极 + 0~3主动词条） -->
         <div id="battle-hud-bottom" class="battle-hud-bottom">
           <div id="active-skill-bar" class="active-skill-bar">
             <!-- 动态生成 1 ~ 5 个主动技能按钮，被动槽位显示在上方状态条 -->
+          </div>
+          <div class="ultimate-toolbar-actions">
+            <button id="ultimate-dodge-fallback" class="climax-button hidden">回避 D</button>
+            <button id="ultimate-counter-fallback" class="climax-button counter hidden">拆招 F</button>
           </div>
         </div>
 
@@ -339,7 +397,7 @@
       <h2>📈 胜率平衡原理</h2>
       <ul class="hotkey-list">
         <li><strong>自动对战</strong>：随机弹跳 + 技能散射 + 劣势补偿 + AI镜像等级。使用固定种子模拟查看实际表现。</li>
-        <li><strong>手动抓时机</strong>：贴脸释放普通技获得伤害加成；大招前摇最后0.75秒可闪避；弹反每个窗口只能触发一次。</li>
+        <li><strong>手动抓时机</strong>：贴脸释放普通技有伤害加成；究极特写结束后，战场命中前0.22秒按D回避，最后0.08秒按F或空格拆招；每次只可应对一次。空格在无究极技时暂停。</li>
       </ul>
     </div>
   </div>
@@ -373,6 +431,12 @@
   <script src="js/finale.js"></script>
   <script src="js/battle.js"></script>
   <script src="js/simulation.js"></script>
+  <script src="js/scenarios.js"></script>
+  <script src="js/stories/delivery.js"></script>
+  <script src="js/stories/bait.js"></script>
+  <script src="js/stories/billing.js"></script>
+  <script src="js/stories/audition.js"></script>
+  <script src="js/stories/lag.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
