@@ -101,6 +101,7 @@
             <p><code>ult</code> + target 只充满能量；<code>stun</code> + target + duration 眩晕若干秒，0 解除眩晕；<code>speed</code> + value 支持 0.5/1/1.5/2，长剧情固定 1×。</p>
             <p><code>text</code> + content 显示文字，可附 color；<code>pause</code> + duration 冻结若干现实秒后继续，手动暂停/继续可接管。</p>
             <p><code>caption</code> + content + duration 显示持续字幕，可附 chapter；长剧情的 <code>guard</code> + target + value 设置保活比例，<code>finish</code> 在 duration 秒指定一方退场。</p>
+            <p>长剧情默认自动点击弹反和反击按钮。<code>response</code> + value 可按时间切换：<code>both</code> 两者、<code>parry</code> 仅弹反、<code>counter</code> 仅反击、<code>off</code> 关闭；在有效窗口点击，暂停时停止，重开恢复默认。</p>
             <p>长剧情 JSON 包含 title、recording: true、duration、p1HeroId、p2HeroId 和 timeline，加载后需播放/重开生效。短局仍使用数组，中途加载会补执行已过时的节点，可能提前结束。</p>
             <p>标注时间为剧情秒数，短暂停顿与约 3.35 秒终结演出另计。这里只播放演出，视频请用本地录屏工具录制。</p>
           </details>
@@ -232,7 +233,6 @@
       <section id="screen-battle" class="game-screen">
         <!-- 战斗主 Canvas -->
         <canvas id="battle-canvas" width="960" height="540"></canvas>
-        <p id="story-recording-label" class="story-recording-label hidden"></p>
         <div id="story-caption" class="story-caption hidden" role="status" aria-live="polite" aria-atomic="true">
           <span id="story-chapter" class="story-chapter"></span>
           <p id="story-caption-text" class="story-caption-text"></p>
@@ -253,6 +253,7 @@
             <div class="ultimate-energy-row"><span>究极能量</span><strong id="hud-p1-ult-txt">0%</strong></div>
             <div class="ultimate-energy-bar"><div id="hud-p1-ult" class="ultimate-energy-fill p1" style="width:0%"></div></div>
             <div id="hud-p1-passives" class="hud-mini-tags"></div>
+            <div id="hud-p1-protection" class="protection-hint hidden" role="status"></div>
           </div>
 
           <div class="vs-timer-box">
@@ -274,6 +275,7 @@
             <div class="ultimate-energy-row"><span>究极能量</span><strong id="hud-p2-ult-txt">0%</strong></div>
             <div class="ultimate-energy-bar"><div id="hud-p2-ult" class="ultimate-energy-fill p2" style="width:0%"></div></div>
             <div id="hud-p2-passives" class="hud-mini-tags"></div>
+            <div id="hud-p2-protection" class="protection-hint hidden" role="status"></div>
           </div>
         </div>
 
@@ -341,6 +343,14 @@
 
         <!-- 底部操作栏：自动开关 + 最多 5 个主动技能按钮（1普通主动 + 0~1主动究极 + 0~3主动词条） -->
         <div id="battle-hud-bottom" class="battle-hud-bottom">
+          <div class="battle-growth-bar" aria-label="双方本局发育">
+            <button id="growth-p1" class="growth-card" aria-haspopup="dialog" aria-controls="fighter-details"><strong>我方发育 · 详细属性</strong><span id="growth-p1-stats"></span><small id="growth-p1-event"></small></button>
+            <button id="growth-p2" class="growth-card enemy" aria-haspopup="dialog" aria-controls="fighter-details"><strong>对手发育 · 详细属性</strong><span id="growth-p2-stats"></span><small id="growth-p2-event"></small></button>
+          </div>
+          <div class="ultimate-receipts" aria-label="最近大招结算">
+            <p id="ult-receipt-p1" role="status" aria-live="polite"></p>
+            <p id="ult-receipt-p2" role="status" aria-live="polite"></p>
+          </div>
           <div id="active-skill-bar" class="active-skill-bar">
             <!-- 动态生成 1 ~ 5 个主动技能按钮，被动槽位显示在上方状态条 -->
           </div>
@@ -375,7 +385,7 @@
               </div>
               <div class="res-actions">
                 <button id="btn-res-gacha" class="btn-res gacha">🎰 立即去抽十连</button>
-                <button id="btn-res-again" class="btn-res again">⚡ 再来一局 (自动盲盒)</button>
+                <button id="btn-res-again" class="btn-res again">⚡ 再来一局</button>
               </div>
             </div>
           </div>
@@ -422,6 +432,11 @@
     <div id="simulation-report" aria-live="polite">选择大厅对局模式后运行；模拟不会改变存档或当前对局。</div>
   </dialog>
   <p class="orientation-hint">横屏游玩体验更好，请将手机横过来。</p>
+  <dialog id="fighter-details" aria-labelledby="fighter-details-title">
+    <div class="details-heading"><div><small>角色发育档案</small><h2 id="fighter-details-title">详细属性</h2></div><button id="close-fighter-details" aria-label="关闭详细属性">关闭</button></div>
+    <p id="fighter-details-pause"></p>
+    <div id="fighter-details-content"></div>
+  </dialog>
   <div id="game-notice" role="status" aria-live="polite" class="hidden"></div>
   <script src="js/config.js"></script>
   <script src="js/data.js"></script>
@@ -430,6 +445,7 @@
   <script src="js/finale-audio.js"></script>
   <script src="js/finale.js"></script>
   <script src="js/battle.js"></script>
+  <script src="js/battle-insights.js"></script>
   <script src="js/simulation.js"></script>
   <script src="js/scenarios.js"></script>
   <script src="js/stories/delivery.js"></script>

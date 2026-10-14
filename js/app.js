@@ -6,12 +6,14 @@ class AppController {
     this.canvas = document.getElementById("battle-canvas");
     this.engine = new window.BattleEngine(this.canvas);
     this.engine.onScenarioChange = () => this.updateScenarioProgress();
+    this.engine.onScenarioInput = (id) => this.clickScenarioButton(id);
     this.pendingPulls = this.store.state.pendingPulls;
     this.draftTimerId = null;
     this.draftGeneration = 0;
     this.simulating = false;
 
     this.bindEvents();
+    this.engine.bindCombatInsights();
     this.refreshTopBar();
     this.renderLobby();
     this.renderGachaStage();
@@ -158,9 +160,27 @@ class AppController {
     document.getElementById("story-caption-text").textContent = caption?.content || "";
     document.getElementById("story-caption-text").style.color = caption?.color || "";
     document.getElementById("story-chapter").textContent = caption ? scenario.chapter || "" : "";
-    const label = document.getElementById("story-recording-label");
-    label.classList.toggle("hidden", !visible || !scenario?.recording || !scenario.started);
-    label.textContent = scenario?.recording ? `导演剧情演出 · ${scenario.title}` : "";
+  }
+
+  clickScenarioButton(id) {
+    const button = document.getElementById(id);
+    if (!button || button.disabled || !button.checkVisibility()) return false;
+    const rect = button.getBoundingClientRect();
+    const pointer = document.createElement("div");
+    pointer.className = "battle-click-pointer";
+    pointer.setAttribute("aria-hidden", "true");
+    pointer.style.left = `${rect.left + rect.width / 2}px`;
+    pointer.style.top = `${rect.top + rect.height / 2}px`;
+    pointer.innerHTML = '<svg width="28" height="34" viewBox="0 0 28 34"><path d="M3 2 L3 26 L10 20 L16 31 L21 28 L15 18 L25 17 Z" fill="white" stroke="#111" stroke-width="2"/></svg>';
+    document.body.appendChild(pointer);
+    const animation = pointer.animate([
+      { transform: "scale(0.8)", opacity: 1 },
+      { transform: "scale(1)", opacity: 1, offset: 0.35 },
+      { transform: "scale(1)", opacity: 0 }
+    ], { duration: 450, easing: "ease-out" });
+    animation.finished.then(() => pointer.remove(), () => pointer.remove());
+    button.click();
+    return true;
   }
 
   updateScenarioProgress() {
@@ -182,7 +202,7 @@ class AppController {
     el.replaceChildren();
     if (!this.engine.scenario) { el.classList.add("hidden"); return; }
     const { timeline, cursor } = this.engine.scenario;
-    const actionLabels = { q: "绝境翻盘", w: "一击收尾", e: "贴脸", r: "卡车车队", hp: "设血量", ult: "充能", speed: "变速", text: "漂字", pause: "暂停", shield: "护盾", stun: "眩晕", caption: "字幕", guard: "保活", finish: "剧情收尾" };
+    const actionLabels = { q: "绝境翻盘", w: "一击收尾", e: "贴脸", r: "卡车车队", hp: "设血量", ult: "充能", speed: "变速", text: "漂字", pause: "暂停", shield: "护盾", stun: "眩晕", caption: "字幕", guard: "保活", finish: "剧情收尾", response: "自动应对" };
     timeline.forEach((cue, i) => {
       const row = document.createElement("div");
       row.className = i < cursor ? "cue-done" : i === cursor ? "cue-next" : "cue-pending";
@@ -220,9 +240,10 @@ class AppController {
     document.getElementById("battle-speed").disabled = recording;
     const auto = document.getElementById("btn-toggle-auto");
     auto.disabled = recording;
-    auto.textContent = recording ? "剧情自动演出" : `自动释放：${this.store.state.autoBattle ? "开启" : "关闭"}`;
+    auto.classList.toggle("hidden", recording);
+    auto.textContent = `自动释放：${recording || this.store.state.autoBattle ? "开启" : "关闭"}`;
     auto.classList.toggle("active", recording || this.store.state.autoBattle);
-    document.getElementById("btn-res-again").textContent = recording ? "重播这个剧本" : "⚡ 再来一局 (自动盲盒)";
+    document.getElementById("btn-res-again").textContent = "⚡ 再来一局";
     if (!this.engine.running) this.engine.mode = mode;
   }
 
@@ -242,8 +263,12 @@ class AppController {
     document.getElementById("setting-voice").checked = settings.voice;
     document.getElementById("setting-effects").value = settings.effects;
     const autoBtn = document.getElementById("btn-toggle-auto");
-    autoBtn.classList.toggle("active", this.store.state.autoBattle);
-    autoBtn.innerHTML = `自动释放：<strong>${this.store.state.autoBattle ? "开启" : "关闭"}</strong>`;
+    const recording = !!this.engine.scenario?.recording;
+    autoBtn.classList.toggle("hidden", recording);
+    if (!recording) {
+      autoBtn.classList.toggle("active", this.store.state.autoBattle);
+      autoBtn.innerHTML = `自动释放：<strong>${this.store.state.autoBattle ? "开启" : "关闭"}</strong>`;
+    }
   }
 
   // 渲染大厅：4大角色切换 & (2固定核心被动 + 1自选普通主动 + 1自选究极技[主动或被动])
@@ -547,6 +572,8 @@ class AppController {
   startMatchDraftFlow() {
     const recording = this.engine.scenario;
     if (recording?.recording) {
+      document.body.classList.add("pure-record-mode");
+      document.getElementById("game-notice").classList.add("hidden");
       clearInterval(this.draftTimerId);
       this.draftGeneration++;
       this.switchScreen("screen-battle");

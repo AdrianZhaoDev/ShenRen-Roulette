@@ -142,6 +142,10 @@ class BattleEngine {
           if (cue.target !== "p1" && cue.target !== "p2") return `${prefix}target 只能是 p1 或 p2`;
           if (!Number.isFinite(cue.value) || cue.value < 0 || cue.value > 1) return `${prefix}guard value 必须在 0 到 1 之间`;
           break;
+        case "response":
+          if (!recording) return `${prefix}response 只用于长剧情对象`;
+          if (!["both", "parry", "counter", "off"].includes(cue.value)) return `${prefix}response value 只能是 both/parry/counter/off`;
+          break;
         case "finish":
           if (!recording || cue.at !== definition.duration) return `${prefix}finish 只用于长剧情终点`;
           if (cue.target !== "p1" && cue.target !== "p2") return `${prefix}target 只能是 p1 或 p2`;
@@ -170,7 +174,7 @@ class BattleEngine {
       recording, title: recording ? definition.title : "", duration: recording ? definition.duration : null,
       p1HeroId: recording ? definition.p1HeroId : null, p2HeroId: recording ? definition.p2HeroId : null,
       timeline: (recording ? definition.timeline : definition).map((cue) => ({ ...cue })).sort((a, b) => a.at - b.at),
-      cursor: 0, initialSpeed, started: false, finished: false, caption: null, chapter: "", hpFloors: { p1: 0, p2: 0 }
+      cursor: 0, initialSpeed, started: false, finished: false, caption: null, chapter: "", hpFloors: { p1: 0, p2: 0 }, response: "both"
     };
     if (!this.headless) this.onScenarioChange?.();
     return true;
@@ -198,6 +202,25 @@ class BattleEngine {
     if (!this.isRecordingActive()) return;
     this.p1.hp = Math.max(this.p1.hp, this.recordingHpFloor(this.p1));
     this.p2.hp = Math.max(this.p2.hp, this.recordingHpFloor(this.p2));
+  }
+
+  scenarioResponseEnabled(kind) {
+    return this.isRecordingActive() && !this.paused && ["both", kind].includes(this.scenario.response);
+  }
+
+  updateScenarioResponses(headless = this.headless) {
+    let id;
+    if (this.pendingUltimate) {
+      if (!this.scenarioResponseEnabled("counter") || !this.canRespondUltimate() ||
+          this.pendingUltimate.remaining > this.getCombatConfig().ultimate.counterWindow * 0.75 + 1e-9) return;
+      id = "ultimate-counter-btn";
+    } else {
+      // 留出可见的反应时间，再走与玩家相同的按钮事件。
+      if (!this.scenarioResponseEnabled("parry") || this.qteTimer <= 0 || this.qteTimer > 0.93 || !this.canAct(this.p1)) return;
+      id = "qte-counter-btn";
+    }
+    if (!headless) return this.onScenarioInput?.(id);
+    return id === "qte-counter-btn" ? this.triggerManualQTE() : this.triggerUltimateCounter();
   }
 
   updateScenario(headless = this.headless) {
@@ -229,11 +252,11 @@ class BattleEngine {
       p1.immortalTimer = Math.max(p1.immortalTimer, 3.5);
       p1.activeSlots.forEach((slot) => { if (!slot.isUlt) slot.cdLeft = 0; });
       p1.ultimateEnergy = this.getCombatConfig().ultimate.maxEnergy;
-      this.spawnText("🎬剧本：1滴血锁血+普通技能与究极能量就绪!!", p1.x, p1.y - 50, "#ffe600", 24);
+      this.spawnText("绝境爆发！技能就绪!!", p1.x, p1.y - 50, "#ffe600", 24);
     } else if (cue.action === "w") {
       p2.hp = 1;
       if (this.isRecordingActive()) this.scenario.hpFloors.p2 = 0;
-      this.spawnText("🎬剧本：对手破防仅剩1滴血!!", p2.x, p2.y - 50, "#ff2a54", 24);
+      this.spawnText("对手破防！仅剩1滴血!!", p2.x, p2.y - 50, "#ff2a54", 24);
     } else if (cue.action === "e") {
       const cx = arena.x + arena.w / 2;
       const cy = arena.y + arena.h / 2;
@@ -242,7 +265,7 @@ class BattleEngine {
       p1.y = cy;
       p2.x = cx + gap;
       p2.y = cy;
-      this.spawnText("🎬剧本：贴脸大乱斗!!", cx, cy - 60, "#00eaff", 24);
+      this.spawnText("贴脸大乱斗!!", cx, cy - 60, "#00eaff", 24);
     } else if (cue.action === "r") {
       for (let i = 0; i < 4; i++) {
         this.summons.push({
@@ -251,7 +274,7 @@ class BattleEngine {
           vx: 720, w: 110, h: 54, dmg: 140, hitDone: false
         });
       }
-      this.spawnText("🚛 导演指令：百吨王车队进场!!", arena.x + arena.w / 2, arena.y + arena.h / 2, "#ffe600", 26);
+      this.spawnText("🚛 百吨王车队进场!!", arena.x + arena.w / 2, arena.y + arena.h / 2, "#ffe600", 26);
     } else if (cue.action === "hp") {
       if (!target) return false;
       target.hp = Math.min(target.maxHp, cue.value <= 1 ? target.maxHp * cue.value : cue.value);
@@ -271,13 +294,16 @@ class BattleEngine {
       if (!this.isRecordingActive() || !target) return false;
       this.scenario.hpFloors[cue.target] = cue.value;
       target.hp = Math.max(target.hp, this.recordingHpFloor(target));
+    } else if (cue.action === "response") {
+      if (!this.isRecordingActive()) return false;
+      this.scenario.response = cue.value;
     } else if (cue.action === "finish") {
       if (!this.isRecordingActive() || !target) return false;
       this.scenario.finished = true;
       const attacker = target === p1 ? p2 : p1;
       target.hp = 0;
       attacker.hp = Math.max(1, attacker.hp);
-      this.lastLethalHit = { attacker, defender: target, label: "剧情终结", comeback: attacker.hp / attacker.maxHp <= 0.25, attrition: false };
+      this.lastLethalHit = { attacker, defender: target, label: "终结一击", comeback: attacker.hp / attacker.maxHp <= 0.25, attrition: false };
     } else if (cue.action === "pause") {
       if (!headless) {
         this.setPaused(true);
@@ -417,12 +443,13 @@ class BattleEngine {
     return Math.min(cap, base * (1 + (Math.max(1, level) - 1) * growth));
   }
 
-  beginUltimateSequence(caster, target) {
+  beginUltimateSequence(caster, target, name = caster.ultSkill.name) {
     const ult = this.getCombatConfig().ultimate;
     caster.ultimateEnergy = 0;
     caster.ultimateSecondaryBudget = target.maxHp * ult.secondaryBudgetRatio;
     caster.ultimateSequence += 1;
     caster.ultimateSequenceState = { id: caster.ultimateSequence, remaining: caster.ultimateSecondaryBudget, secondaryDamage: target.maxHp * ult.secondaryDamageRatio };
+    this.createUltimateReport(caster, caster.ultimateSequenceState, name);
   }
 
   getPhase(elapsed) {
@@ -459,6 +486,7 @@ class BattleEngine {
 
     [this.p1, this.p2].forEach((fighter) => {
       if (!fighter) return;
+      const before = { maxHp: fighter.maxHp, baseSpd: fighter.baseSpd, radius: fighter.radius };
       if (nextPhase === "mid") {
         fighter.baseSpd *= 1.08;
         fighter.maxHp = Math.round(fighter.maxHp * 1.12);
@@ -472,6 +500,7 @@ class BattleEngine {
         fighter.maxHp = Math.round(fighter.maxHp * 1.25);
         fighter.hp = Math.min(fighter.maxHp, fighter.hp + Math.round(fighter.maxHp * 0.3));
       }
+      this.recordGrowth(fighter, this.getPhaseLabel(nextPhase), before);
     });
   }
 
@@ -511,10 +540,12 @@ class BattleEngine {
   }
 
   growFighter(fighter, ratio, flatHp, headless, label) {
+    const before = { maxHp: fighter.maxHp, baseSpd: fighter.baseSpd, radius: fighter.radius };
     fighter.maxHp += flatHp;
     fighter.hp = Math.min(fighter.maxHp, fighter.hp + flatHp);
     fighter.radius = Math.min(this.arena.h * 0.42, fighter.radius * (1 + ratio));
     fighter.scaleAnim = 1.28;
+    this.recordGrowth(fighter, label, before);
     if (!headless) {
       this.spawnText(`🟢 ${label} +${flatHp}HP`, fighter.x, fighter.y - fighter.radius - 20, "#00ff88", 18);
       this.particleBursts.push({ x: fighter.x, y: fighter.y, color: "#00ff88", count: 18, life: 0.55 });
@@ -524,7 +555,7 @@ class BattleEngine {
   startUltimateCutin(caster, target, slot) {
     const ult = this.getCombatConfig().ultimate;
     if (!caster || !target || target.hp <= 0 || !this.canAct(caster) || !this.isUltimateSlot(slot) || slot.isRepeat || caster.ultimateEnergy < ult.maxEnergy) return false;
-    this.beginUltimateSequence(caster, target);
+    this.beginUltimateSequence(caster, target, slot.name);
     const hero = window.MEME_DATA.heroes[caster.heroId];
     const source = slot.sourceType === "heroUlt"
       ? hero.ultSkills.find((skill) => skill.id === caster.ultSkill.id)
@@ -635,7 +666,12 @@ class BattleEngine {
       }
       const slowing = p.slowRemaining > 1e-9;
       const rate = this.playbackSpeed * (slowing ? ult.slowScale : 1);
-      const boundary = p.phase === "arena" && !p.slowStarted && p.slot.effectKind !== "pk_col_2" ? Math.max(0, p.remaining - ult.dodgeWindow) : p.remaining;
+      let boundary = p.phase === "arena" && !p.slowStarted && p.slot.effectKind !== "pk_col_2" ? Math.max(0, p.remaining - ult.dodgeWindow) : p.remaining;
+      const counterAt = ult.counterWindow * 0.75;
+      if (p.phase === "arena" && p.target.isPlayer && !p.responseUsed && p.slot.effectKind !== "pk_col_2" &&
+          this.scenarioResponseEnabled("counter") && p.remaining > counterAt + 1e-9) {
+        boundary = Math.min(boundary, p.remaining - counterAt);
+      }
       const slice = Math.min(realLeft, boundary / rate, slowing ? p.slowRemaining : Infinity);
       const step = slice * rate;
       p.remaining = Math.max(0, p.remaining - step);
@@ -672,6 +708,8 @@ class BattleEngine {
           this.clampFighter(p.target);
         }
         this.ultimateDodgeWindow = p.slot.effectKind !== "pk_col_2" && p.remaining <= ult.dodgeWindow + 1e-9 ? p.remaining : 0;
+        this.syncUltimateControls();
+        this.updateScenarioResponses(headless);
         if (p.remaining <= 1e-9) {
           const auto = !p.target.isPlayer || (this.options.autoBattle ?? this.store.state.autoBattle);
           if (auto && !p.responseUsed && p.slot.effectKind !== "pk_col_2") {
@@ -701,7 +739,10 @@ class BattleEngine {
     if (!headless) window.memeAudio.playUltImpactLaunch?.(p.caster.heroId);
   }
 
-  clearUltimate() {
+  clearUltimate(resolving = false) {
+    if (this.pendingUltimate && !resolving) {
+      this.recordUltimateHit(this.pendingUltimate.caster, { ultimateCore: true }, { reasons: ['施法中断'] });
+    }
     if (this.pendingUltimate) this.pendingUltimate.caster.morphScale.target = 1;
     this.pendingUltimate = null;
     this.ultimateDodgeWindow = 0;
@@ -713,16 +754,21 @@ class BattleEngine {
     const p = this.pendingUltimate;
     if (!p || p.phase !== "arena" || p.remaining > 1e-9 || this.paused || !this.running) return false;
     const { caster, target, slot, attack } = p;
-    this.clearUltimate();
+    this.clearUltimate(true);
     this.state = "battle";
     if (!headless) {
       this.motionBurst({ x: attack.toX, y: attack.toY, accent: caster.accent }, false);
       this.skillVfxList.push({ kind: "climax_crater", x: attack.toX, y: attack.toY, color: caster.accent, life: 0.9, maxLife: 0.9 });
       this.triggerShake(p.dodged ? 8 : 26, 0.4);
     }
-    if (p.dodged) { target.dodgeTimer = this.getCombatConfig().ultimate.dodgeInvulnerability; return true; }
+    if (p.dodged) {
+      target.dodgeTimer = this.getCombatConfig().ultimate.dodgeInvulnerability;
+      this.recordUltimateHit(caster, { ultimateCore: true }, { reasons: ['已被回避'] });
+      return true;
+    }
     if (slot.effectKind !== "pk_col_2") {
-      this.applyDamage(caster, target, target.maxHp * this.ultimateRatio("active", slot.level) * (p.countered ? 0.5 : 1), slot.name, false, headless, { ultimateCore: true, responseResolved: true });
+      const coreDamage = target.maxHp * this.ultimateRatio("active", slot.level);
+      this.applyDamage(caster, target, coreDamage * (p.countered ? 0.5 : 1), slot.name, false, headless, { ultimateCore: true, responseResolved: true, counterReduction: p.countered ? coreDamage * 0.5 : 0 });
       if (!headless) this.spawnText(p.countered ? "CLASH · 极限拆招" : "CRITICAL CLIMAX!!", attack.toX, attack.toY - 85, p.countered ? "#00f0ff" : "#ffe600", 27);
     }
     if (p.countered) {
@@ -733,6 +779,7 @@ class BattleEngine {
       this.dodgeFlashTimer = 0.12;
       if (!headless) window.memeAudio.playClash(true);
     } else this.executeUltimateEffect(caster, target, slot, headless);
+    if (slot.effectKind === 'pk_col_2') this.recordUltimateHit(caster, { ultimateCore: true }, { reasons: ['成长究极：回血与体型成长，无核心伤害'] });
     return true;
   }
 
@@ -972,6 +1019,7 @@ class BattleEngine {
     this.p2.maxShield = Math.round(this.getCombatConfig().fighter.maxShield * hpScale);
     this.p1.shield = 0;
     this.p2.shield = 0;
+    this.initCombatInsights();
 
     this.projectiles = [];
     this.floatingTexts = [];
@@ -1002,6 +1050,7 @@ class BattleEngine {
       this.scenario.caption = null;
       this.scenario.chapter = "";
       this.scenario.hpFloors = { p1: 0, p2: 0 };
+      this.scenario.response = "both";
       this.setSpeed(recording ? 1 : this.scenario.initialSpeed);
       if (!this.headless) this.onScenarioChange?.();
     }
@@ -1078,9 +1127,9 @@ class BattleEngine {
     if (this.announcerTimer > 0) this.announcerTimer -= dt;
 
 
-    if (!headless) {
+    if (!headless || this.isRecordingActive()) {
       const dist = Math.hypot(this.p1.x - this.p2.x, this.p1.y - this.p2.y);
-      const qteBtn = document.getElementById("qte-counter-btn");
+      const qteBtn = headless ? null : document.getElementById("qte-counter-btn");
       if (this.qteTimer > 0) {
         this.qteTimer -= dt;
         if (this.qteTimer <= 0 && qteBtn) qteBtn.classList.add("hidden");
@@ -1093,6 +1142,7 @@ class BattleEngine {
         }
       }
     }
+    this.updateScenarioResponses(headless);
 
     for (const job of this.queuedCasts) job.remaining -= dt;
     const due = this.queuedCasts.filter((job) => job.remaining <= 0);
@@ -1475,21 +1525,23 @@ class BattleEngine {
     if (this.qteTimer <= 0) return;
     if (!this.canAct(this.p1)) return false;
     this.qteTimer = 0;
-    const qteBtn = document.getElementById("qte-counter-btn");
+    const qteBtn = this.headless ? null : document.getElementById("qte-counter-btn");
     if (qteBtn) qteBtn.classList.add("hidden");
 
     this.manualPerfectCount++;
-    window.memeAudio.playClash(true);
-    window.memeAudio.speakMemeShout("极限弹反哈气！", this.p1.heroId, true);
-    this.triggerShake(18, 0.25);
     this.hitstopTimer = 0.06;
-    this.ringEffects.push({ x: this.p1.x, y: this.p1.y, r: 20, maxR: 230, color: "#00ff88", alpha: 1 });
-    this.spawnText("⚡ 完美弹反哈气!! 暴击+回血!", this.p1.x, this.p1.y - 60, "#00ff88", 26);
+    if (!this.headless) {
+      window.memeAudio.playClash(true);
+      window.memeAudio.speakMemeShout("极限弹反哈气！", this.p1.heroId, true);
+      this.triggerShake(18, 0.25);
+      this.ringEffects.push({ x: this.p1.x, y: this.p1.y, r: 20, maxR: 230, color: "#00ff88", alpha: 1 });
+      this.spawnText("⚡ 完美弹反哈气!! 暴击+回血!", this.p1.x, this.p1.y - 60, "#00ff88", 26);
+    }
 
-    this.applyHeal(this.p1, 95, "完美防反+95", false);
-    this.applyDamage(this.p1, this.p2, 145, "💥极限反震!!", true, false);
+    this.applyHeal(this.p1, 95, "完美防反+95", this.headless);
+    this.applyDamage(this.p1, this.p2, 145, "💥极限反震!!", true, this.headless);
     this.addUltimateEnergy(this.p1, this.getCombatConfig().ultimate.gainOnPerfectDodge);
-    window.BattleEffects.onDodge(this, this.p1, this.p2, false);
+    window.BattleEffects.onDodge(this, this.p1, this.p2, this.headless);
     return true;
   }
 
@@ -1764,7 +1816,10 @@ class BattleEngine {
   applyDamage(attacker, defender, amount, label, forceCrit = false, headless = this.headless, options = {}) {
     this.applyRecordingGuards();
     if (!this.running || this.paused || this.finale || attacker.hp <= 0 || defender.hp <= 0 || !Number.isFinite(amount) || amount <= 0) return 0;
-    if (defender.isDodging && defender.dodgeTimer > 0) return 0;
+    if (defender.isDodging && defender.dodgeTimer > 0) {
+      this.recordUltimateHit(attacker, options, { reasons: ['已被回避'] });
+      return 0;
+    }
     const ageDodge = this.hasPerk(defender, "pk_sifu_3") ? (72 - defender.age) * 0.001 : 0;
     if (!options.responseResolved && !options.secondary && this.random() < (this.hasPerk(defender, "pk_sifu_4") ? 0.25 : 0) + ageDodge) {
       defender.isDodging = true;
@@ -1772,6 +1827,7 @@ class BattleEngine {
       if (!headless) window.memeAudio.playSifuDodge();
       if (this.hasPerk(defender, "pk_sifu_4")) this.applyDamage(defender, attacker, 85, "太极偏斜反击", true, headless, { secondary: true });
       window.BattleEffects.onDodge(this, defender, attacker, headless);
+      this.recordUltimateHit(attacker, options, { reasons: ['已被回避'] });
       return 0;
     }
     const ultimateCore = options.ultimateCore === true;
@@ -1791,6 +1847,7 @@ class BattleEngine {
       sequence.remaining -= damage;
       if (sequence === attacker.ultimateSequenceState) attacker.ultimateSecondaryBudget = sequence.remaining;
     }
+    const beforeReduction = damage;
     if (this.hasPerk(defender, "pk_col_5")) damage = Math.round(damage * 0.8);
     const heavyHit = defender.heroId === "kunge" && damage > 120;
     if (heavyHit) damage = Math.round(damage * 0.65);
@@ -1804,15 +1861,28 @@ class BattleEngine {
     const executed = lottery || collector;
     if (executed) hpDamage = Math.max(hpDamage, defender.hp);
     const before = defender.hp;
+    let hitHpLoss = 0;
+    let hitRecovery = 0;
+    const hitReasons = [];
+    if (options.counterReduction) hitReasons.push('拆招减伤');
+    if (beforeReduction > damage) hitReasons.push('防御减伤');
     // 处决仍须经过免死和锁血，无法绕过这两个防御规则。
     if (before - hpDamage <= 0 && this.hasPerk(defender, "pk_vmp_3") && !defender.pddImmortalUsed) {
       defender.pddImmortalUsed = true;
       defender.immortalTimer = 3;
       defender.hp = 1;
+      hitHpLoss = Math.max(0, before - 1);
       this.applyHeal(defender, Math.round(defender.maxHp * 0.5), "拼夕夕免死回血", headless);
+      hitRecovery += defender.hp - 1;
+      hitReasons.push('免死触发');
       if (!options.secondary) this.applyDamage(defender, attacker, 180, "免死反震", true, headless, { secondary: true });
     } else {
       defender.hp = Math.max(this.recordingHpFloor(defender), defender.immortalTimer > 0 ? 1 : 0, before - hpDamage);
+      hitHpLoss = Math.max(0, before - defender.hp);
+      if (hitHpLoss < Math.min(before, hpDamage)) {
+        if (this.recordingHpFloor(defender) > 0) hitReasons.push('剧情锁血');
+        if (defender.immortalTimer > 0) hitReasons.push('免死保护');
+      }
     }
     if (defender.hp / defender.maxHp <= 0.25 && before / defender.maxHp < attacker.hp / attacker.maxHp - 0.15) defender.lastDisadvantageAt = this.elapsed;
     if (defender.hp <= 0) this.lastLethalHit = {
@@ -1837,8 +1907,14 @@ class BattleEngine {
     if (defender.heroId === "hajimi" && defender.hp > 0 && defender.hp < defender.maxHp * 0.3 && !defender.nineLivesUsed) {
       defender.nineLivesUsed = true;
       defender.frenzyTimer = 4;
+      const beforeRecovery = defender.hp;
       this.applyHeal(defender, 220, "九命猫薄荷", headless);
+      hitRecovery += defender.hp - beforeRecovery;
+      hitReasons.push('九命回血');
     }
+    this.recordUltimateHit(attacker, options, { hp: hitHpLoss, shield: shieldDamage,
+      reduced: beforeReduction - damage + (options.counterReduction || 0),
+      blocked: Math.max(0, Math.min(before, hpDamage) - hitHpLoss), recovered: hitRecovery, hit: true, reasons: hitReasons });
     window.BattleEffects.onHit(this, attacker, defender, actualDamage, isCrit, headless, { ...options, heavyHit });
     if (!headless) {
       if (actualDamage > 0) window.memeAudio.playImpact(isCrit);
@@ -2642,6 +2718,7 @@ class BattleEngine {
 
   updateTopHudUI() {
     if (!this.p1 || !this.p2) return;
+    this.updateCombatInsights();
     document.getElementById("hud-p1-name").textContent = this.p1.name;
     document.getElementById("hud-p2-name").textContent = this.p2.name;
 
@@ -2655,7 +2732,7 @@ class BattleEngine {
       const pct = Math.max(0, Math.min(100, fighter.ultimateEnergy));
       const fill = document.getElementById(fillId); const text = document.getElementById(textId);
       if (fill) fill.style.width = `${pct}%`;
-      if (text) text.textContent = `${Math.floor(pct)}%`;
+      if (text) text.textContent = pct >= 100 ? (fighter.ultSkill.type === 'passive' ? '已满 · 自动触发' : '已满 · 可释放') : `${Math.floor(pct)}%`;
     };
     updateEnergy(this.p1, "hud-p1-ult", "hud-p1-ult-txt");
     updateEnergy(this.p2, "hud-p2-ult", "hud-p2-ult-txt");

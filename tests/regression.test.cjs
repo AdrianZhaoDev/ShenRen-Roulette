@@ -30,7 +30,7 @@ function environment(saved) {
     memeAudio: new Proxy({}, { get: () => () => {} })
   });
   context.window = context;
-  for (const file of ['config', 'data', 'effects', 'finale-audio', 'finale', 'battle', 'simulation', 'scenarios', 'stories/delivery', 'stories/bait', 'stories/billing', 'stories/audition', 'stories/lag']) vm.runInContext(fs.readFileSync(path.join(root, `js/${file}.js`), 'utf8'), context, { filename: `${file}.js` });
+  for (const file of ['config', 'data', 'effects', 'finale-audio', 'finale', 'battle', 'battle-insights', 'simulation', 'scenarios', 'stories/delivery', 'stories/bait', 'stories/billing', 'stories/audition', 'stories/lag']) vm.runInContext(fs.readFileSync(path.join(root, `js/${file}.js`), 'utf8'), context, { filename: `${file}.js` });
   const engine = (headless = true) => {
     const e = new context.BattleEngine({ width: 960, height: 540, getContext: () => null }, { headless, random: context.GameRandom.seeded(42) });
     e.startMatch('dayun', [], { p2HeroId: 'dayun', p2Perks: [] });
@@ -39,6 +39,96 @@ function environment(saved) {
   return { context, storage, elements, frames, engine, perk: id => context.MEME_DATA.perks.find(p => p.id === id) };
 }
 const plain = value => JSON.parse(JSON.stringify(value));
+
+function recordingEngine(env) {
+  const e = env.engine();
+  e.loadScenario(env.context.SCENARIO_PRESETS.delivery);
+  e.startMatch('dayun', []);
+  return e;
+}
+
+test('录制自动弹反等待反应时间，暂停和眩晕不点击且同窗口只结算一次', () => {
+  const env = environment(); const e = recordingEngine(env);
+  e.qteTimer = 1.35;
+  e.updateScenarioResponses();
+  assert.equal(e.manualPerfectCount, 0);
+  e.qteTimer = 0.9;
+  e.setPaused(true); e.updateScenarioResponses();
+  assert.equal(e.manualPerfectCount, 0);
+  e.setPaused(false); e.p1.stunTimer = 1; e.updateScenarioResponses();
+  assert.equal(e.manualPerfectCount, 0);
+  e.p1.stunTimer = 0;
+  e.updateScenarioResponses(); e.updateScenarioResponses();
+  assert.equal(e.manualPerfectCount, 1);
+  assert.equal(e.qteTimer, 0);
+});
+
+test('录制自动反击只在有效窗口点击，渲染路径使用按钮事件入口', () => {
+  const env = environment(); const e = recordingEngine(env);
+  e.p2.ultSkill = e.p1.ultSkill;
+  const slot = e.p1.activeSlots.find(s => s.isUlt);
+  e.p2.ultimateEnergy = env.context.GAME_CONFIG.combat.ultimate.maxEnergy;
+  e.startUltimateCutin(e.p2, e.p1, slot);
+  const p = e.pendingUltimate;
+  e.updateScenarioResponses();
+  assert.equal(p.responseUsed, false);
+  e.beginArenaUltimate(true);
+  p.remaining = e.ultimateDodgeWindow = 0.15;
+  e.updateScenarioResponses();
+  assert.equal(p.responseUsed, false);
+  const clicks = [];
+  e.onScenarioInput = id => { clicks.push(id); return e.triggerUltimateCounter(); };
+  p.remaining = e.ultimateDodgeWindow = 0.06;
+  e.updateScenarioResponses(false); e.updateScenarioResponses(false);
+  assert.deepEqual(clicks, ['ultimate-counter-btn']);
+  assert.equal(p.countered, true);
+  assert.equal(p.responseUsed, true);
+});
+
+test('录制反击在大步长内仍先于命中结算，不漏过有效窗口', () => {
+  const env = environment(); const e = recordingEngine(env);
+  e.p2.ultimateEnergy = env.context.GAME_CONFIG.combat.ultimate.maxEnergy;
+  e.p2.ultSkill = e.p1.ultSkill;
+  e.startUltimateCutin(e.p2, e.p1, e.p1.activeSlots.find(s => s.isUlt));
+  const p = e.pendingUltimate;
+  e.updateUltimateCutin(3, true);
+  assert.equal(p.countered, true);
+  assert.equal(p.responseUsed, true);
+});
+
+test('录制自动应对可按时间轴切换，重开重置，清除及普通对局不触发', () => {
+  const env = environment(); const e = recordingEngine(env);
+  const definition = plain(env.context.SCENARIO_PRESETS.delivery);
+  definition.timeline.unshift({ at: 0, action: 'response', value: 'off' });
+  assert.equal(e.loadScenario(definition), true);
+  e.startMatch('dayun', []); e.updateScenario(); e.qteTimer = 0.9;
+  e.updateScenarioResponses(); assert.equal(e.manualPerfectCount, 0);
+  e.executeScenarioCue({ action: 'response', value: 'counter' }, true);
+  e.updateScenarioResponses(); assert.equal(e.manualPerfectCount, 0);
+  e.executeScenarioCue({ action: 'response', value: 'parry' }, true);
+  e.updateScenarioResponses(); assert.equal(e.manualPerfectCount, 1);
+  e.startMatch('dayun', []); assert.equal(e.scenario.response, 'off');
+  e.loadScenario(env.context.SCENARIO_PRESETS.delivery);
+  e.startMatch('dayun', []); assert.equal(e.scenario.response, 'both');
+  e.clearScenario(); e.qteTimer = 0.9;
+  e.updateScenarioResponses(); assert.equal(e.manualPerfectCount, 0);
+  definition.timeline[0].value = 'invalid';
+  assert.equal(e.loadScenario(definition), false);
+  assert.equal(e.loadScenario([{ at: 0, action: 'response', value: 'both' }]), false);
+});
+
+test('五个录制模板自动应对后仍正常收尾，画面文案无导演剧本提示', () => {
+  const env = environment();
+  for (const key of ['delivery', 'bait', 'billing', 'audition', 'lag']) {
+    const e = env.engine();
+    e.loadScenario(env.context.SCENARIO_PRESETS[key]); e.startMatch('dayun', []);
+    for (let frame = 0; frame < 36000 && e.running; frame++) e.update(1 / 60);
+    assert.equal(e.outcome?.winner, 'p1', key);
+    assert.equal(e.scenario.finished, true, key);
+    assert.ok(e.manualPerfectCount > 0, key);
+    for (const cue of e.scenario.timeline) assert.doesNotMatch(cue.content || '', /导演|剧本/);
+  }
+});
 
 function directorHarness() {
   const env = environment();
@@ -179,14 +269,17 @@ test('成功闪避后下一次大招重新显示按钮，暂停不能闪避', ()
   e.p2.ultimateEnergy = context.GAME_CONFIG.combat.ultimate.maxEnergy;
   const slot = e.p1.activeSlots[1];
   e.startUltimateCutin(e.p2, e.p1, slot);
-  e.updateUltimateCutin(1, false);
+  const ult = context.GAME_CONFIG.combat.ultimate;
+  e.updateUltimateCutin(ult.cutinDuration + ult.arenaDuration - ult.dodgeWindow, false);
   e.setPaused(true);
   assert.equal(e.triggerUltimateDodge(), false);
   e.setPaused(false);
   assert.equal(e.triggerUltimateDodge(), true);
-  e.resolveUltimateCutin(false);
+  e.updateUltimateCutin(1, false);
   e.p2.ultimateEnergy = context.GAME_CONFIG.combat.ultimate.maxEnergy;
   e.startUltimateCutin(e.p2, e.p1, slot);
+  assert.equal(elements.get('ultimate-dodge-btn').classList.contains('hidden'), true);
+  e.updateUltimateCutin(ult.cutinDuration + ult.arenaDuration - ult.dodgeWindow, false);
   assert.equal(elements.get('ultimate-dodge-btn').classList.contains('hidden'), false);
 });
 
@@ -377,7 +470,8 @@ test('主动究极核心按最大生命结算且满能量只启动一次', () =>
   assert.equal(e.p1.ultimateEnergy, 0);
   assert.equal(e.p1.ultimateSequence, 1);
   assert.equal(e.castActiveSlot(e.p1, e.p2, 1, false, true), false);
-  e.resolveUltimateCutin(true);
+  assert.equal(e.resolveUltimateCutin(true), false, '前摇结束前不能提前结算');
+  e.updateUltimateCutin(ult.cutinDuration + ult.arenaDuration + ult.slowDuration, true);
   assert.equal(e.p2.hp, 6000 - 2160);
   assert.ok(e.p1.ultimateSecondaryBudget <= 900);
 });
@@ -514,7 +608,7 @@ test('重开重置时间轴与初始速度，清除剧本停止未来节点', ()
   assert.equal(e.scenario, null);
 });
 
-test('五个录屏剧情在自动关闭和短局偏好下仍按选角完整播放到指定终点', () => {
+test('五个录屏剧情在自动关闭和短局偏好下完整播放，终点等待当前究极结束', () => {
   const { engine, context } = environment();
   context.gameStore.state.autoBattle = false;
   context.gameStore.state.matchMode = 'quick';
@@ -535,10 +629,15 @@ test('五个录屏剧情在自动关闭和短局偏好下仍按选角完整播�
         assert.equal(e.running, true, `${key}提前结束于${e.elapsed}`);
         assert.ok(e.p1.hp >= 1 && e.p2.hp >= 1, `${key}剧情保活失效`);
       }
-      e.update(1 / 60);
-      assert.equal(e.outcome.winner, 'p1');
+      // 慢镜头使用逻辑时间；剧情指令等当前究极退出后执行。
+      const endTolerance = context.GAME_CONFIG.combat.ultimate.cutinDuration + context.GAME_CONFIG.combat.ultimate.arenaDuration + 1 / 60;
+      for (let frame = 0; frame < duration * 120 && !e.outcome; frame++) {
+        e.update(1 / 60);
+        if (!e.outcome) assert.ok(e.elapsed <= duration + endTolerance, `${key}越过剧情终点：${e.elapsed}`);
+      }
+      assert.equal(e.outcome?.winner, 'p1');
       assert.equal(e.outcome.timedOut, false);
-      assert.ok(Math.abs(e.outcome.duration - duration) < 1e-6);
+      assert.ok(e.outcome.duration >= duration - 1e-6 && e.outcome.duration <= duration + endTolerance, `${key}未在当前究极结束后收尾`);
       assert.equal(e.p2.hp, 0);
       assert.equal(e.scenario.cursor, e.scenario.timeline.length);
       assert.equal(e.scenario.finished, true);
@@ -637,4 +736,106 @@ test('零时长眩晕指令解除等待，使演员能够正常施放技能', ()
   e.updateScenario();
   assert.equal(e.castActiveSlot(e.p1, e.p2, 0, true, true), true);
   assert.ok(e.p1.activeSlots[0].cdLeft > 0);
+});
+
+test('大招结算分离扣血、护盾、减伤，反震不会混入施法者记录', () => {
+  const { engine, perk } = environment(); const e = engine();
+  e.p2.maxHp = e.p2.hp = 6000; e.p2.shield = 300;
+  e.p2.perks = [perk('pk_col_5')];
+  e.beginUltimateSequence(e.p1, e.p2);
+  e.applyDamage(e.p1, e.p2, 1000, '核心', false, true, { ultimateCore: true, responseResolved: true });
+  const report = e.p1.ultimateReports[0];
+  assert.equal(report.hp, 500); assert.equal(report.shield, 300); assert.equal(report.reduced, 200);
+  assert.equal(report.hits, 1); assert.equal(e.p2.hp, 5500);
+  e.applyDamage(e.p1, e.p2, 100, '拆招反震', false, true, { ultimateCore: true, secondary: true, responseResolved: true });
+  assert.equal(report.hp, 500); assert.equal(report.hits, 1);
+});
+
+test('剧情锁血与免死显示真实拦截，不把理论伤害计为扣血', () => {
+  const env = environment(); const e = recordingEngine(env);
+  e.p2.hp = e.p2.maxHp * 0.5; e.p2.shield = 100;
+  e.beginUltimateSequence(e.p1, e.p2);
+  e.applyDamage(e.p1, e.p2, 1000, '核心', false, true, { ultimateCore: true, responseResolved: true });
+  const report = e.p1.ultimateReports[0];
+  assert.equal(report.hp, 0); assert.equal(report.shield, 100); assert.equal(report.blocked, 900);
+  assert.ok(report.reasons.includes('剧情锁血'));
+  assert.match(e.protectionText(e.p2), /50%/);
+  e.updateTopHudUI();
+  assert.match(env.elements.get('hud-p2-protection').textContent, /剧情锁血/);
+  e.clearScenario(); e.p2.immortalTimer = 2; e.p2.hp = 1;
+  e.beginUltimateSequence(e.p1, e.p2);
+  e.applyDamage(e.p1, e.p2, 1000, '核心', false, true, { ultimateCore: true, responseResolved: true });
+  assert.equal(e.p1.ultimateReports[0].hp, 0);
+  assert.ok(e.p1.ultimateReports[0].reasons.includes('免死保护'));
+  e.p2.immortalTimer = 0; e.updateTopHudUI();
+  assert.equal(env.elements.get('hud-p2-protection').classList.contains('hidden'), true);
+});
+
+test('多段大招按释放序列累计，旧弹幕和新大招互不串账', () => {
+  const e = environment().engine(); e.p2.maxHp = e.p2.hp = 10000;
+  e.beginUltimateSequence(e.p1, e.p2, '第一次');
+  const old = e.p1.ultimateSequenceState;
+  e.applyDamage(e.p1, e.p2, 1000, '', false, true, { ultimateCore: true, responseResolved: true });
+  e.beginUltimateSequence(e.p1, e.p2, '第二次');
+  e.applyDamage(e.p1, e.p2, 600, '', false, true, { ultimateCore: true, responseResolved: true });
+  e.applyDamage(e.p1, e.p2, 500, '', false, true, { ultimateSecondary: true, ultimateSequence: old, secondary: true, responseResolved: true });
+  assert.equal(old.report.hp, 1500); assert.equal(old.report.hits, 2);
+  assert.equal(e.p1.ultimateReports[0].hp, 600);
+  assert.equal(e.p1.ultimateReports[1].name, '第一次');
+});
+
+test('回避、拆招与成长型究极都有准确结算说明', () => {
+  const { engine, perk } = environment(); const e = engine();
+  e.p1.ultimateEnergy = 100;
+  e.startUltimateCutin(e.p1, e.p2, e.p1.activeSlots[1]);
+  e.pendingUltimate.dodged = true; e.updateUltimateCutin(3, true);
+  assert.equal(e.p1.ultimateReports[0].hp, 0);
+  assert.deepEqual(plain(e.p1.ultimateReports[0].reasons), ['已被回避']);
+  e.p2.isDodging = false; e.p2.dodgeTimer = 0;
+  e.p1.ultimateEnergy = 100;
+  e.startUltimateCutin(e.p1, e.p2, e.p1.activeSlots[1]);
+  const before = e.p2.hp;
+  e.pendingUltimate.countered = true; e.updateUltimateCutin(3, true);
+  assert.equal(e.p1.ultimateReports[0].hp, before - e.p2.hp);
+  assert.ok(e.p1.ultimateReports[0].reasons.includes('拆招减伤'));
+  assert.ok(e.p1.ultimateReports[0].reduced > 0);
+  const growth = engine(); growth.p1.ultimateEnergy = 100;
+  growth.startUltimateCutin(growth.p1, growth.p2, { ...perk('pk_col_2'), isUlt: true, level: 1, effectKind: 'pk_col_2' });
+  growth.updateUltimateCutin(3, true);
+  assert.equal(growth.p1.ultimateReports[0].hp, 0);
+  assert.match(growth.ultimateReceipt(growth.p1.ultimateReports[0]), /无核心伤害/);
+  assert.ok(growth.p1.radius > 32);
+});
+
+test('免死回血分列，斩杀溢出不计入大招实际扣血', () => {
+  const { engine, perk } = environment(); const e = engine();
+  e.p2.maxHp = 6000; e.p2.hp = 300; e.p2.perks = [perk('pk_vmp_3')];
+  e.beginUltimateSequence(e.p1, e.p2);
+  e.applyDamage(e.p1, e.p2, 1000, '', false, true, { ultimateCore: true, responseResolved: true });
+  const report = e.p1.ultimateReports[0];
+  assert.equal(report.hp, 299); assert.equal(report.recovered, 3000); assert.equal(report.blocked, 1);
+  assert.equal(e.p2.hp, 3001);
+  assert.ok(report.reasons.includes('免死触发'));
+  e.p2.immortalTimer = 0; e.p2.hp = 100;
+  e.beginUltimateSequence(e.p1, e.p2);
+  e.applyDamage(e.p1, e.p2, 1000, '', false, true, { ultimateCore: true, responseResolved: true });
+  assert.equal(e.p1.ultimateReports[0].hp, 100);
+  assert.equal(e.p1.ultimateReports[0].blocked, 0);
+});
+
+test('发育比较基于本局开局快照，记录来源且重开清空记录', () => {
+  const e = environment().engine(); const initial = e.p1.maxHp;
+  e.growFighter(e.p1, 0.25, 65, true, '心之钢叠层');
+  assert.equal(e.fighterStats(e.p1).hpGain, 65);
+  assert.equal(e.fighterStats(e.p1).sizeGain, 0.25);
+  assert.match(e.p1.growthHistory[0].text, /心之钢叠层/);
+  e.matchTimeLeft = e.maxMatchDuration * 0.7; e.updatePhase(true);
+  assert.equal(e.fighterStats(e.p1).hpGain, Math.round((initial + 65) * 1.12) - initial);
+  assert.ok(Math.abs(e.fighterStats(e.p1).speedGain - 0.08) < 1e-9);
+  assert.equal(e.fighterStats(e.p1).damageMultiplier, 1.1);
+  assert.match(e.p1.growthHistory[0].text, /中期/);
+  e.beginUltimateSequence(e.p1, e.p2);
+  e.startMatch('dayun', [], { p2HeroId: 'dayun', p2Perks: [] });
+  assert.equal(e.p1.ultimateReports.length, 0); assert.equal(e.p1.growthHistory.length, 0);
+  assert.equal(e.fighterStats(e.p1).hpGain, 0);
 });

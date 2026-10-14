@@ -33,7 +33,7 @@ window.SCENARIO_PRESETS.lag = {
     {
       "at": 10,
       "action": "caption",
-      "content": "血条告急，网络正在组织语言。\n导演：那就停半秒，先喘口气。",
+      "content": "血条告急，网络正在组织语言。\n先缓半秒，喘口气。",
       "duration": 10,
       "chapter": "第一次卡顿"
     },
