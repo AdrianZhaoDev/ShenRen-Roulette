@@ -256,6 +256,7 @@ class AppController {
     const settings = this.store.state.settings;
     window.memeAudio.applySettings(settings);
     const reduced = settings.effects === "reduced" || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (this.engine) this.engine.options.reducedEffects = reduced || (navigator.hardwareConcurrency > 0 && navigator.hardwareConcurrency <= 2);
     document.body.classList.toggle("reduced-effects", reduced);
     document.getElementById("setting-volume").value = Math.round(settings.volume * 100);
     document.getElementById("volume-value").textContent = `${Math.round(settings.volume * 100)}%`;

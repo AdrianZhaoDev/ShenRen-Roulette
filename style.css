@@ -1812,10 +1812,6 @@ body.pure-record-mode #phone-viewport {
   .climax-button { font-size: 14px; padding: 8px 12px; }
 }
 
-@keyframes cutinFlash {
-  from { filter: saturate(1.1) brightness(0.94); }
-  to { filter: saturate(1.65) brightness(1.22); }
-}
 
 @keyframes cutinSpin {
   to { transform: rotate(360deg); }
@@ -1851,10 +1847,6 @@ body.pure-record-mode #phone-viewport {
   to { transform: scale(1.06) translateY(-4px); }
 }
 
-@keyframes dodgePulse {
-  from { transform: scale(0.97); }
-  to { transform: scale(1.04); }
-}
 
 @media (max-width: 720px), (max-height: 540px) {
   .cutin-stage-wrap {

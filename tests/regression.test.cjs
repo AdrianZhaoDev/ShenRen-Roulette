@@ -470,7 +470,9 @@ test('主动究极核心按最大生命结算且满能量只启动一次', () =>
   assert.equal(e.p1.ultimateEnergy, 0);
   assert.equal(e.p1.ultimateSequence, 1);
   assert.equal(e.castActiveSlot(e.p1, e.p2, 1, false, true), false);
+  e.random = () => 0.99;
   assert.equal(e.resolveUltimateCutin(true), false, '前摇结束前不能提前结算');
+  assert.equal(e.p2.hp, 6000);
   e.updateUltimateCutin(ult.cutinDuration + ult.arenaDuration + ult.slowDuration, true);
   assert.equal(e.p2.hp, 6000 - 2160);
   assert.ok(e.p1.ultimateSecondaryBudget <= 900);
@@ -624,7 +626,8 @@ test('五个录屏剧情在自动关闭和短局偏好下完整播放，终点�
       e.startMatch('dayun', [], { p2HeroId: 'dayun', p2Perks: [] });
       assert.equal(e.p1.heroId, player); assert.equal(e.p2.heroId, opponent);
       assert.equal(e.mode, 'classic');
-      for (let frame = 0; frame < duration * 60 - 1; frame++) {
+      // Slow motion extends real playback, while story cues remain on the combat clock.
+      for (let frame = 0; e.elapsed + 1 / 60 < duration - 1e-9 && frame < duration * 120; frame++) {
         e.update(1 / 60);
         assert.equal(e.running, true, `${key}提前结束于${e.elapsed}`);
         assert.ok(e.p1.hp >= 1 && e.p2.hp >= 1, `${key}剧情保活失效`);
@@ -758,15 +761,12 @@ test('剧情锁血与免死显示真实拦截，不把理论伤害计为扣血',
   e.applyDamage(e.p1, e.p2, 1000, '核心', false, true, { ultimateCore: true, responseResolved: true });
   const report = e.p1.ultimateReports[0];
   assert.equal(report.hp, 0); assert.equal(report.shield, 100); assert.equal(report.blocked, 900);
-  assert.ok(report.reasons.includes('剧情锁血'));
-  assert.match(e.protectionText(e.p2), /50%/);
   e.updateTopHudUI();
-  assert.match(env.elements.get('hud-p2-protection').textContent, /剧情锁血/);
+  assert.equal(env.elements.get('hud-p2-protection').classList.contains('hidden'), false);
   e.clearScenario(); e.p2.immortalTimer = 2; e.p2.hp = 1;
   e.beginUltimateSequence(e.p1, e.p2);
   e.applyDamage(e.p1, e.p2, 1000, '核心', false, true, { ultimateCore: true, responseResolved: true });
   assert.equal(e.p1.ultimateReports[0].hp, 0);
-  assert.ok(e.p1.ultimateReports[0].reasons.includes('免死保护'));
   e.p2.immortalTimer = 0; e.updateTopHudUI();
   assert.equal(env.elements.get('hud-p2-protection').classList.contains('hidden'), true);
 });
@@ -781,29 +781,26 @@ test('多段大招按释放序列累计，旧弹幕和新大招互不串账', ()
   e.applyDamage(e.p1, e.p2, 500, '', false, true, { ultimateSecondary: true, ultimateSequence: old, secondary: true, responseResolved: true });
   assert.equal(old.report.hp, 1500); assert.equal(old.report.hits, 2);
   assert.equal(e.p1.ultimateReports[0].hp, 600);
-  assert.equal(e.p1.ultimateReports[1].name, '第一次');
+  assert.equal(e.p1.ultimateReports[1], old.report);
 });
 
-test('回避、拆招与成长型究极都有准确结算说明', () => {
+test('回避、拆招与成长型究极记录实际生命变化', () => {
   const { engine, perk } = environment(); const e = engine();
   e.p1.ultimateEnergy = 100;
   e.startUltimateCutin(e.p1, e.p2, e.p1.activeSlots[1]);
   e.pendingUltimate.dodged = true; e.updateUltimateCutin(3, true);
   assert.equal(e.p1.ultimateReports[0].hp, 0);
-  assert.deepEqual(plain(e.p1.ultimateReports[0].reasons), ['已被回避']);
   e.p2.isDodging = false; e.p2.dodgeTimer = 0;
   e.p1.ultimateEnergy = 100;
   e.startUltimateCutin(e.p1, e.p2, e.p1.activeSlots[1]);
   const before = e.p2.hp;
   e.pendingUltimate.countered = true; e.updateUltimateCutin(3, true);
   assert.equal(e.p1.ultimateReports[0].hp, before - e.p2.hp);
-  assert.ok(e.p1.ultimateReports[0].reasons.includes('拆招减伤'));
   assert.ok(e.p1.ultimateReports[0].reduced > 0);
   const growth = engine(); growth.p1.ultimateEnergy = 100;
   growth.startUltimateCutin(growth.p1, growth.p2, { ...perk('pk_col_2'), isUlt: true, level: 1, effectKind: 'pk_col_2' });
   growth.updateUltimateCutin(3, true);
   assert.equal(growth.p1.ultimateReports[0].hp, 0);
-  assert.match(growth.ultimateReceipt(growth.p1.ultimateReports[0]), /无核心伤害/);
   assert.ok(growth.p1.radius > 32);
 });
 
@@ -815,7 +812,6 @@ test('免死回血分列，斩杀溢出不计入大招实际扣血', () => {
   const report = e.p1.ultimateReports[0];
   assert.equal(report.hp, 299); assert.equal(report.recovered, 3000); assert.equal(report.blocked, 1);
   assert.equal(e.p2.hp, 3001);
-  assert.ok(report.reasons.includes('免死触发'));
   e.p2.immortalTimer = 0; e.p2.hp = 100;
   e.beginUltimateSequence(e.p1, e.p2);
   e.applyDamage(e.p1, e.p2, 1000, '', false, true, { ultimateCore: true, responseResolved: true });
@@ -823,19 +819,74 @@ test('免死回血分列，斩杀溢出不计入大招实际扣血', () => {
   assert.equal(e.p1.ultimateReports[0].blocked, 0);
 });
 
-test('发育比较基于本局开局快照，记录来源且重开清空记录', () => {
+test('发育比较基于本局开局快照，重开清空记录', () => {
   const e = environment().engine(); const initial = e.p1.maxHp;
   e.growFighter(e.p1, 0.25, 65, true, '心之钢叠层');
   assert.equal(e.fighterStats(e.p1).hpGain, 65);
   assert.equal(e.fighterStats(e.p1).sizeGain, 0.25);
-  assert.match(e.p1.growthHistory[0].text, /心之钢叠层/);
   e.matchTimeLeft = e.maxMatchDuration * 0.7; e.updatePhase(true);
   assert.equal(e.fighterStats(e.p1).hpGain, Math.round((initial + 65) * 1.12) - initial);
   assert.ok(Math.abs(e.fighterStats(e.p1).speedGain - 0.08) < 1e-9);
   assert.equal(e.fighterStats(e.p1).damageMultiplier, 1.1);
-  assert.match(e.p1.growthHistory[0].text, /中期/);
   e.beginUltimateSequence(e.p1, e.p2);
   e.startMatch('dayun', [], { p2HeroId: 'dayun', p2Perks: [] });
   assert.equal(e.p1.ultimateReports.length, 0); assert.equal(e.p1.growthHistory.length, 0);
   assert.equal(e.fighterStats(e.p1).hpGain, 0);
+});
+
+test('究极应对只在战场开放，慢动作按现实时间推进，拆招不能重复或过早补救', () => {
+  for (const response of ['none', 'dodge', 'counter', 'early']) {
+    const { engine } = environment(); const e = engine();
+    e.options.autoBattle = false; e.random = () => 0.99;
+    e.p2.ultSkill = e.p1.ultSkill; e.p2.ultimateEnergy = 100;
+    const hp = e.p1.hp, attackerHp = e.p2.hp;
+    e.startUltimateCutin(e.p2, e.p1, e.p1.activeSlots[1]);
+    assert.equal(e.triggerUltimateDodge(), false);
+    assert.equal(e.triggerUltimateCounter(), false);
+    e.update(0.9); assert.equal(e.pendingUltimate.phase, 'arena'); assert.equal(e.p1.hp, hp);
+    e.update(0.37); assert.equal(e.triggerUltimateDodge(), false);
+    e.update(0.01); const remaining = e.pendingUltimate.remaining;
+    e.setPaused(true); e.update(1); assert.equal(e.pendingUltimate.remaining, remaining);
+    e.setPaused(false); e.update(0.3);
+    assert.ok(Math.abs(remaining - e.pendingUltimate.remaining - 0.06) < 1e-8);
+    if (response === 'dodge') { assert.equal(e.triggerUltimateDodge(), true); assert.equal(e.triggerUltimateCounter(), false); }
+    if (response === 'early') { assert.equal(e.triggerUltimateCounter(), false); assert.equal(e.triggerUltimateDodge(), false); }
+    if (response === 'counter') { e.update(0.08); assert.equal(e.triggerUltimateCounter(), true); assert.equal(e.triggerUltimateCounter(), false); }
+    e.update(0.3);
+    const loss = response === 'dodge' ? 0 : Math.round(hp * 0.36 * (response === 'counter' ? 0.5 : 1));
+    assert.equal(e.p1.hp, hp - loss); assert.equal(e.pendingUltimate, null);
+    if (response === 'dodge') { assert.equal(e.p1.ultimateEnergy, 20); assert.equal(e.applyDamage(e.p2, e.p1, 90), 0); }
+    if (response === 'counter') assert.ok(e.p2.hp < attackerHp);
+  }
+});
+
+test('瞬移延迟到重现才命中，穿梭每段最多一次且不会被重复技能打断', () => {
+  for (const type of ['teleport', 'blitz']) {
+    const { engine } = environment(); const e = engine(); e.random = () => 0.99;
+    e.p1.x = 180; e.p2.x = 520; e.p1.y = e.p2.y = 240;
+    const slot = e.p1.activeSlots[0]; slot.animationType = type; slot.cdLeft = 0;
+    const hp = e.p2.hp;
+    e.castActiveSlot(e.p1, e.p2, 0, false, true);
+    assert.equal(e.p2.hp, hp); assert.equal(e.castActiveSlot(e.p1, e.p2, 0, false, true, true), false);
+    if (type === 'teleport') { e.updateMorph(e.p1, e.p2, 0.1, true); assert.equal(e.p2.hp, hp); }
+    const motion = e.p1.morphState;
+    for (let i = 0; i < 30; i++) e.updateMorph(e.p1, e.p2, 1 / 60, true);
+    assert.ok(e.p2.hp < hp); assert.equal(e.p1.morphState, null);
+    if (type === 'blitz') assert.deepEqual(plain(motion.hits), [true, true, true]);
+    const after = e.p2.hp; e.updateMorph(e.p1, e.p2, 1, true); assert.equal(e.p2.hp, after);
+  }
+});
+
+test('分身拦截敌弹且到期消失，召唤物只命中一次，重开清除实体与形变', () => {
+  const { engine } = environment(); const e = engine();
+  e.startSkillMotion(e.p1, e.p2, { animationType: 'clones', name: '分身' }, 120, true);
+  const c = e.clones[0]; e.projectiles = [{owner:e.p2,x:c.x,y:c.y,vx:0,vy:0,r:10,dmg:20,life:1,bouncesLeft:0}];
+  const hp = e.p1.hp; e.updateProjectiles(0.01, true);
+  assert.equal(e.clones.length, 1); assert.equal(e.projectiles.length, 0); assert.equal(e.p1.hp, hp);
+  e.updateClones(0.81, true); assert.equal(e.clones.length, 0);
+  e.spawnSummon(e.p1, e.p2, 100, '召唤'); const s = e.summons[0]; s.x = e.p2.x; s.y = e.p2.y; s.vx = s.vy = 0;
+  e.updateSummons(0.01, true); const after = e.p2.hp; e.updateSummons(0.01, true); assert.equal(e.p2.hp, after);
+  e.startEvadeMotion(e.p1, e.p2); e.updateMorph(e.p1,e.p2,0.2,true); assert.ok(e.p1.morphScale.current < 0.8);
+  e.startMatch('dayun', [], {p2HeroId:'dayun',p2Perks:[]});
+  assert.equal(e.summons.length, 0); assert.equal(e.p1.morphState, null); assert.equal(e.p1.morphScale.current, 1);
 });

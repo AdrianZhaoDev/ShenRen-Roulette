@@ -401,7 +401,7 @@ class BattleEngine {
   }
 
   canAct(fighter) {
-    return this.running && !this.paused && this.state === "battle" && !this.pendingUltimate && fighter.hp > 0 && !(this.timeStopTimer > 0 && this.timeStopOwner !== fighter) && !(fighter.stunTimer > 0);
+    return this.running && !this.paused && this.state === "battle" && !this.pendingUltimate && !["teleport", "blitz", "dash_trail"].includes(fighter.morphState?.type) && fighter.hp > 0 && !(this.timeStopTimer > 0 && this.timeStopOwner !== fighter) && !(fighter.stunTimer > 0);
   }
 
   checkFinished() {
@@ -695,6 +695,7 @@ class BattleEngine {
         if (p.remaining <= 1e-9) this.beginArenaUltimate(headless);
       } else {
         const progress = 1 - p.remaining / p.total;
+        if (!headless && p.total - p.remaining >= 0.1) this.showUltimateCutin(false);
         p.attack.x = p.attack.fromX + (p.attack.toX - p.attack.fromX) * progress;
         p.attack.y = p.attack.fromY + (p.attack.toY - p.attack.fromY) * progress;
         p.caster.morphScale.current += (p.caster.morphScale.target - p.caster.morphScale.current) * (1 - Math.exp(-8 * step));
@@ -1104,6 +1105,8 @@ class BattleEngine {
       const advanced = this.updateUltimateCutin(dt, headless);
       this.elapsed += advanced;
       this.matchTimeLeft = Math.max(0, this.maxMatchDuration - this.elapsed);
+      this.updatePhase(headless);
+      this.updateScenario(headless);
       if (!headless) { this.updateParticles(advanced); this.updateTopHudUI(); }
       this.checkFinished();
       return;
@@ -1449,8 +1452,6 @@ class BattleEngine {
         this.ringEffects.push({ x: caster.x, y: caster.y, r: 30, maxR: 170 * Math.min(1.5, lvMult), color: caster.color, alpha: 1 });
         if (kind === "beam_flash") {
           this.spawnSkillVfx({ kind: "highbeam_cone", x: caster.x, y: caster.y, toX: target.x, toY: target.y, color: "#ffe600", accent: "#ffffff", life: 0.42, maxLife: 0.42 });
-        } else if (kind === "melee_flurry") {
-          this.spawnSkillVfx({ kind: "cat_flurry", x: caster.x, y: caster.y, toX: target.x, toY: target.y, color: "#ff9500", accent: "#00f0ff", life: 0.45, maxLife: 0.45 });
         } else if (kind === "sonic_ring") {
           this.spawnSkillVfx({
             kind: caster.heroId === "kunge" ? "kun_sonic" : "cat_hiss_wave",
@@ -1465,8 +1466,7 @@ class BattleEngine {
           });
         }
       }
-      let pCount = Math.min(5, 1 + Math.floor(slot.level / 2));
-      if (slot.skillId === "dy_s3") pCount = 4;
+      const pCount = Math.min(5, 1 + Math.floor(slot.level / 2));
       if (kind === "beam_flash") target.stance = Math.max(0, target.stance - 20);
       if (kind === "sonic_ring") {
         target.shield = Math.max(0, target.shield - 80);
@@ -1476,18 +1476,8 @@ class BattleEngine {
         target.vy = Math.sin(angle) * 450;
         return true;
       }
-      if (slot.skillId === "kg_s2") pCount = 1;
-      const visualKind = slot.skillId === "dy_s3" ? "tire"
-        : slot.skillId === "hj_s2" ? "litter"
-        : slot.skillId === "ld_s2" ? "icetea"
-        : (slot.skillId === "ld_s3" || slot.skillId === "kg_s2" || caster.heroId === "kunge") ? "basketball"
-        : "default";
+      const visualKind = slot.skillId === "ld_s2" ? "icetea" : caster.heroId === "kunge" ? "basketball" : "default";
       this.spawnProjectiles(caster, target, pCount, Math.round(rawDmg / Math.sqrt(pCount)), 470, caster.accent, 16, visualKind);
-      if (slot.skillId === "kg_s2") {
-        this.projectiles[this.projectiles.length - 1].bouncesLeft = 5;
-        this.projectiles[this.projectiles.length - 1].r = 26;
-      }
-      if (slot.skillId === "hj_s2") this.projectiles.slice(-pCount).forEach((projectile) => { projectile.slow = 2; });
       if (dist < 185) {
         this.applyDamage(caster, target, Math.round(rawDmg * 0.65), slot.name, isManual, headless);
       }
@@ -1612,9 +1602,13 @@ class BattleEngine {
     f.y = Math.max(this.arena.y + f.radius, Math.min(this.arena.y + this.arena.h - f.radius, f.y));
   }
 
+  reducedEffects() {
+    return this.options.reducedEffects || this.store.state.settings.effects === "reduced";
+  }
+
   motionBurst(f, headless) {
     if (headless) return;
-    const reduced = this.store.state.settings.effects === "reduced";
+    const reduced = this.reducedEffects();
     this.particleBursts.push({ x: f.x, y: f.y, color: f.accent || f.color, count: reduced ? 4 : 18, life: 0.4 });
     this.ringEffects.push({ x: f.x, y: f.y, r: 12, maxR: 110, color: f.accent || f.color, alpha: 1 });
   }
@@ -1751,7 +1745,7 @@ class BattleEngine {
         f.phantomClock += dt;
         if (f.phantomClock >= 0.03) {
           f.phantomClock %= 0.03;
-          const limit = this.store.state.settings.effects === "reduced" ? 3 : 6;
+          const limit = this.reducedEffects() ? 3 : 6;
           if (this.phantoms.length >= limit) this.phantoms.shift();
           this.phantoms.push({ owner: f, x: f.x, y: f.y, radius: f.radius * f.morphScale.current, angle: m?.type === "evade" ? m.elapsed * 10 : 0, life: 0.18 });
         }
@@ -1765,6 +1759,11 @@ class BattleEngine {
       const c = this.clones[i];
       if (this.timeStopTimer > 0 && this.timeStopOwner !== c.owner) continue;
       c.life -= dt; c.elapsed += dt;
+      if (c.life <= 0 || c.owner.hp <= 0) {
+        this.motionBurst({ ...c, accent: c.owner.accent }, headless);
+        this.clones.splice(i, 1);
+        continue;
+      }
       if (c.elapsed > 0.12) {
         const angle = Math.atan2(c.target.y - c.y, c.target.x - c.x);
         c.vx = Math.cos(angle) * 800; c.vy = Math.sin(angle) * 800;
@@ -1783,7 +1782,8 @@ class BattleEngine {
   }
 
   drawClones(ctx) {
-    for (const c of [...this.phantoms, ...this.clones]) {
+    for (let i = 0; i < this.phantoms.length + this.clones.length; i++) {
+      const c = i < this.phantoms.length ? this.phantoms[i] : this.clones[i - this.phantoms.length];
       ctx.save();
       ctx.globalAlpha = c.life <= 0.18 ? c.life / 0.18 * 0.6 : 0.65;
       ctx.translate(c.x, c.y); ctx.rotate(c.angle || 0);
@@ -1798,15 +1798,16 @@ class BattleEngine {
   updateSummons(dt, headless) {
     for (let i = this.summons.length - 1; i >= 0; i--) {
       const t = this.summons[i];
+      if (this.timeStopTimer > 0 && this.timeStopOwner !== t.owner) continue;
       const target = t.owner.isPlayer ? this.p2 : this.p1;
       const oldX = t.x, oldY = t.y;
       t.x += t.vx * dt;
       t.y += (t.vy || 0) * dt;
       t.life = (t.life ?? 3) - dt;
-      if (!t.hitDone && target.hp > 0 && this.segmentHits(oldX, oldY, t.x, t.y, target, Math.max(t.w, t.h) / 2)) {
+      if (t.life > 0 && !t.hitDone && target.hp > 0 && this.segmentHits(oldX, oldY, t.x, t.y, target, Math.max(t.w, t.h) / 2)) {
         t.hitDone = true;
-        this.applyDamage(t.owner, target, t.dmg, t.label || "召唤突袭", false, headless, { ultimateSecondary: t.ultimateSecondary, ultimateSequence: t.ultimateSequence, secondary: true });
-        if (t.slow) target.slowTimer = t.slow;
+        const damage = this.applyDamage(t.owner, target, t.dmg, t.label || "召唤突袭", false, headless, { ultimateSecondary: t.ultimateSecondary, ultimateSequence: t.ultimateSequence, secondary: true });
+        if (damage > 0 && t.slow) target.slowTimer = t.slow;
       }
       if (t.life <= 0 || t.owner.hp <= 0 || t.x > this.width + 150 || t.x < -400) this.summons.splice(i, 1);
     }
@@ -1920,7 +1921,7 @@ class BattleEngine {
       if (actualDamage > 0) window.memeAudio.playImpact(isCrit);
       if (executed && defender.hp <= 0) window.memeAudio.playExecute9999();
       this.spawnText(`${label || "命中"} -${actualDamage}${isCrit ? " 暴击" : ""}`, defender.x, defender.y - 25, isCrit ? "#ffe600" : "#ff2a54", isCrit ? 22 : 17);
-      if (this.store.state.settings.effects !== "reduced") this.particleBursts.push({ x: defender.x, y: defender.y, color: defender.color, count: isCrit ? 14 : 6, life: 0.38 });
+      if (!this.reducedEffects()) this.particleBursts.push({ x: defender.x, y: defender.y, color: defender.color, count: isCrit ? 14 : 6, life: 0.38 });
     }
     return actualDamage;
   }
@@ -1942,7 +1943,7 @@ class BattleEngine {
   }
 
   triggerShake(intensity = 10, duration = 0.2) {
-    if (this.headless || this.store.state.settings.effects === "reduced") return;
+    if (this.headless || this.reducedEffects()) return;
     this.shakeIntensity = Math.max(this.shakeIntensity, intensity);
     this.shakeTimer = Math.max(this.shakeTimer, duration);
   }
@@ -2257,19 +2258,6 @@ class BattleEngine {
           ctx.stroke();
         });
         ctx.setLineDash([]);
-      } else if (vfx.kind === "cat_flurry") {
-        // 高频喵喵拳残影猫爪弧线
-        ctx.translate(vfx.x + Math.cos(ang) * 42, vfx.y + Math.sin(ang) * 42);
-        ctx.rotate(ang);
-        ctx.strokeStyle = "#00f0ff";
-        ctx.shadowColor = "#ff9500";
-        ctx.shadowBlur = 14;
-        ctx.lineWidth = 4;
-        for (let i = -2; i <= 2; i++) {
-          ctx.beginPath();
-          ctx.arc(12 + p * 36, i * 14, 28, -0.7, 0.7);
-          ctx.stroke();
-        }
       } else if (vfx.kind === "cat_hiss_wave") {
         // 应激哈气锯齿声波环
         ctx.translate(vfx.x, vfx.y);
@@ -2568,7 +2556,7 @@ class BattleEngine {
       ctx.fillStyle = "#ffe600"; ctx.font = "900 18px sans-serif"; ctx.textAlign = "center";
       ctx.fillText("IMPACT WINDOW", this.width / 2, this.arena.y + 24);
     }
-    if (this.dodgeFlashTimer > 0 && this.store.state.settings.effects !== "reduced") {
+    if (this.dodgeFlashTimer > 0 && !this.reducedEffects()) {
       ctx.fillStyle = `rgba(255,255,255,${this.dodgeFlashTimer * 3})`; ctx.fillRect(0, 0, this.width, this.height);
     }
     ctx.restore();
@@ -2779,6 +2767,11 @@ class BattleEngine {
     else winner = Math.abs(score(this.p1) - score(this.p2)) < 0.000001 ? "draw" : score(this.p1) > score(this.p2) ? "p1" : "p2";
     const finishKind = timedOut ? 'timeout' : winner === 'draw' ? 'draw' : this.lastLethalHit?.comeback ? 'comeback' : this.lastLethalHit?.attrition ? 'attrition' : 'ko';
     this.outcome = { winner, timedOut, duration: this.elapsed, phase: this.currentPhase, finishKind };
+    for (const f of [this.p1, this.p2]) {
+      f.morphState = null;
+      f.morphScale.current = f.morphScale.target = 1;
+      f.phantomTimer = 0;
+    }
     if (!this.headless && !this.finalePlayed) {
       this.state = 'finishing';
       this.queuedCasts = [];
